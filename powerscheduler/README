@@ -1,0 +1,61 @@
+Description
+===========
+
+With this application you can schedule the power on and power off of a computer along the week. It also support exceptions to that schedule.
+
+It needs a configuration file stored in '/etc/power_scheduler.cfg' by default. This file assumes the format:
+
+----8<------------------------------
+
+[week]
+Monday = 8.30-20.00
+Tuesday = 8.30-13.15
+Wednesday = 8.30-
+Thursday =     -20.00
+Friday = 8.30-19.00
+Saturday = 
+Sunday = 8.30-20.00
+
+[exceptions]
+Nov_25 = 8.30-22.00
+
+----8<------------------------------
+
+Exceptions format
+-----------------
+
+<month>_<day of month>
+
+month must be one of: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+
+NOTE: Exceptions cannot be empty
+
+
+Schedules format
+----------------
+
+[poweron_hour]-[poweroff_hour]
+
+Examples:
+8.30-12.15 -> power on at 8.30 and off at 12.15
+    -22.00 -> power off at 22.00 (check if it is an scheduled power on before the power off)
+9.00-      -> power on at 9.00 and leave it on
+
+If the schedule of one of the week days is missing, it will be skiped so the computer will keep in the last state that day and will poweron/poweroff in the next scheduled day.
+
+The hour format can be both 'hh:mm' or 'hh.mm'
+
+
+
+USAGE
+=====
+
+  Once you have the proper configuration file, you have to ensure that 'powerscheduler.py' is executed after any modification in the configuration file. You could use cron to exec the 'powerscheduler.py' from time to time (i.e 5 minutes) or you could use icron as a better solution.
+
+  Just be sure that powerscheduler.py, necromancer.py and schedulereader.py are in the same directory (or you can package it).
+
+====================================================
+
+KNOWN BUGS:
+
+	 * Its not contemplated that all week days to be unscheduled and schedule just exceptions
