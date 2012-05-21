@@ -97,8 +97,6 @@ class PylotManager(Thread):
         self.__stop = True
 
     def __checkStatus(self):
-        if self.__stop:
-            print "ERROR: manager stopped."
         return self.__stop
 
     def stopPylot(self, p_name):
