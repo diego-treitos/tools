@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>EarlyVideo Connector</title>
+        <script src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="css/style.css" />
+        <script src="js/functions.js"></script>
+    </head>
+    <body>
+        <div id="controls">
+            <table class="controls">
+                <tr>
+                    <td id="bigcell_left" rowspan="2"><button class=bigbutton  id="start_toggle"></button></td>
+                    <td id="cell_tl" class=cell><a>Parent node</a><input class="input" id="parent" type="text" name="parent"/></td>
+                    <td id="cell_tr" class=cell><a>Refresh seconds</a><input class="input" id="refresh_time" type="number" name="refresh_time" step="1" /></td>
+                    <td id="bigcell_right" rowspan="2"><button class=bigbutton id="update"></button></td>
+                </tr>
+                <tr>
+                    <td id="cell_bl" class=cell><a>Child node</a><input class="input" id="son" type="text" name="son"/></td>
+                    <td id="cell_br" class=cell><a>Mode</a><select class="input" id="mode">
+                            <option value=0>Automatic</option>
+                            <option value=1>Manual</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div id="notifications">
+            <p id="note"></p>
+        </div>
+        <div>
+            <ul id="streams">
+            </ul>
+        </div>
+        <script type="text/javascript">
+            /* Start document */
+        $(document).ready(function(){
+                    refreshControls();
+                    showStreams();
+                    showErrors();
+            });
+            /* Start/Stop button behaviour */
+            $("#start_toggle").click(function(){
+                    $.getJSON("/starttoggle",
+                            function( data ) {
+                                notify(data);
+                            });
+                    refreshControls();
+                    });
+
+            /* Update button behaviour */
+            $("#update").click(function(){
+                    $.getJSON("/settings",
+                        {
+                            "parent":$("#parent").val(),
+                            "son":$("#son").val(),
+                            "refresh_time":$("#refresh_time").val(),
+                            "mode":$("#mode").val()
+                            },
+                            function( data ) {
+                                notify(data);
+                            });
+                    });
+        </script>
+    </body>
+</html>
+

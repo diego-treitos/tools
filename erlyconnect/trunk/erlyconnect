@@ -1,0 +1,246 @@
+#!/usr/bin/env python
+
+import json
+import httplib
+from time import sleep
+import signal
+from threading import Thread
+from bottle import route, run, request, get, static_file
+from os import path
+from optparse import OptionParser
+
+import sys
+sys.path.append('./lib/')
+from Pylot import PylotManager
+
+
+#####################################################
+parser = OptionParser()
+parser.add_option("-p", "--parent", dest="parent", help="take streams from PARENT <ip:port>", metavar="PARENT", type="string")
+parser.add_option("-c", "--clild", dest="child", help="send streams to CHILD <ip:port>", metavar="CHILD", type="string")
+parser.add_option("-r", "--refresh", dest="refresh", help="number seconds between polls to PARENT", metavar="REFRESH", type="int", default=10)
+parser.add_option("-a", "--autostart", action="store_true", dest="autostart", default=False, help="start the replication on startup")
+(options, args) = parser.parse_args()
+
+#####################################################
+#( Internal VARS
+erly_streams_JSON = '/erlyvideo/api/streams'
+erly_get_stream_URL = '/stream/%s'
+erly_send_stream_URL = '/rtmp/%s'
+
+www_path='./www/'
+
+
+ffmpeg_cmd='ffmpeg -xerror -i http://%s%s -acodec libfaac -vcodec copy -f flv  rtmp://%s%s' \
+        % ( '%s', erly_get_stream_URL, '%s', erly_send_stream_URL )
+
+
+class erlyConnect(Thread):
+
+    def __init__(self):
+        Thread.__init__(self)
+        self.ffmanager = None
+        self.erly_streams = None
+        self.__stop = True
+        self.parent = options.parent
+
+        self.__stop_streams = True
+        self.son = options.child
+        self.refresh_time = options.refresh or 10
+
+        self.error_message = None
+        
+        # 0: Automatic, 1: Manual
+        self.mode = 0
+
+    def __getParentStreams(self):
+        if not self.parent:
+            return
+        try:
+            c = httplib.HTTPConnection( self.parent )
+            c.request("GET", erly_streams_JSON)
+            return json.loads(c.getresponse().read())['streams']
+        except:
+            self.error_message = "Connection refused from parent"
+
+    
+    
+    def refresh(self, _streams):
+        if not self.parent or not self.son:
+            self.error_message = 'Parent or son node not defined'
+            return
+
+        if not self.__stop_streams:
+            new_streams_names = []
+            for stream in _streams:
+                new_streams_names.append(stream['url'])
+
+            # Add new streams
+            if self.mode == 0:
+                for s_name in new_streams_names:
+                    if not self.ffmanager.checkPylot( s_name ):
+                        self.ffmanager.addPylot( s_name, ffmpeg_cmd % (self.parent, s_name, self.son, s_name))
+
+            # Delete old streams
+            for p_name in self.ffmanager.getPylots().keys():
+                if p_name not in new_streams_names:
+                    self.ffmanager.stopPylot( p_name )
+    
+    def forceStartStream(self, s_name):
+        if not self.parent or not self.son:
+            self.error_message = 'Parent or son node not defined'
+            return
+        
+        if self.__stop_streams:
+            self.error_message = 'ErlyConnector  not started'
+            return
+        if not self.ffmanager.checkPylot( s_name ):
+            self.ffmanager.addPylot( s_name, ffmpeg_cmd % (self.parent, s_name, self.son, s_name))
+
+
+    def start_streams(self):
+        self.ffmanager = PylotManager()
+        self.ffmanager.start()
+        self.__stop_streams = False
+
+    def stop_streams(self):
+        self.__stop_streams = True
+        self.ffmanager.stop()
+
+    def started_streams(self):
+        return not self.__stop_streams
+
+
+    def run(self):
+        try:
+            self.__stop = False
+            print "- Starting the magic..."
+            while not self.__stop:
+                self.erly_streams = self.__getParentStreams()
+                if not self.erly_streams:
+                    self.error_message = "No streams found on: %s"%self.parent
+                elif not self.__stop_streams:
+                    self.refresh( self.erly_streams )
+                sleep( self.refresh_time )
+        except KeyboardInterrupt:
+            self.stop()
+        except Exception as e:
+            print "<<< CRASH DETECTED >>>"
+            self.error_message = "<<< CRASH DETECTED >>>"
+            print e.__str__()
+            self.stop()
+            raise
+
+    def stop(self):
+        print "\n-  Quitting"
+        self.__stop = True
+        if self.ffmanager:
+            print "   Stopping child processes..."
+            self.ffmanager.stop()
+        print " - Bye."
+
+
+if __name__ == '__main__':
+    ec = erlyConnect()
+    
+    def sigHandler(sig,frame):
+        if sig in (signal.SIGTERM, signal.SIGKILL):
+            ec.stop()
+
+    signal.signal(signal.SIGTERM, sigHandler)
+    ec.start()
+    if options.autostart:
+        ec.start_streams()
+    
+    @route('/')
+    def index():
+        return static_file(filename='main.html',root=www_path)
+
+    @route('/css/<css_name>')
+    def css(css_name):
+        return static_file(filename=css_name,root=path.join(www_path, 'css'))
+
+    @route('/js/<js_name>')
+    def js(js_name):
+        return static_file(filename=js_name,root=path.join(www_path, 'js'))
+    
+    @route('/json/info')
+    def info():
+        try:
+            d={
+                    'started':ec.started_streams(),
+                    'parent':ec.parent,
+                    'son':ec.son,
+                    'refresh_time':ec.refresh_time,
+                    'mode':ec.mode
+                    }
+            return json.dumps( d )
+        except Exception as e:
+            return json.dumps({'status':1,'message':"Error: %s"%e.__str__()})
+
+    @route('/starttoggle')
+    def starttoggle():
+        try:
+            if ec.started_streams():
+                ec.stop_streams()
+                return json.dumps({'status':0,'message':"ErlyConnector stopped"})
+            else:
+                ec.start_streams()
+                return json.dumps({'status':0,'message':"ErlyConnector started"})
+        except Exception as e:
+            return json.dumps({'status':1,'message':"Error: %s"%e.__str__()})
+    
+    @get('/settings')
+    def settings():
+        try:
+            ec.parent = request.query['parent']
+            ec.son = request.query['son']
+            ec.refresh_time = float(request.query['refresh_time'])
+            ec.mode = int(request.query['mode'])
+            return json.dumps({'status':0,'message':"Settings updated"})
+        except Exception as e:
+            return json.dumps({'status':1,'message':"Error: %s"%e.__str__()})
+    
+    @get('/manage')
+    def manage():
+        try:
+            action = request.query['action']
+            s_name = request.query['name']
+            if action == 'stop':
+                ec.ffmanager.stopPylot( s_name )
+            if action == 'start':
+                ec.forceStartStream( s_name )
+            return json.dumps({'status':0,'message':"%s stream %s: OK" % (action,s_name)})
+        except Exception as e:
+            return json.dumps({'status':1,'message':"Error: %s"%e.__str__()})
+
+    @get('/json/getstreams')
+    def getstreams():
+        streamlist = []
+        if ec.erly_streams:
+            for s_name in ec.erly_streams:
+                if ec.ffmanager:
+                    streamlist.append({
+                        'name':s_name['name'],
+                        'started':ec.ffmanager.checkPylot(s_name['name'])
+                        })
+                else:
+                    streamlist.append({
+                        'name':s_name['name'],
+                        'started':False
+                        })
+                    
+        return json.dumps(streamlist)
+    
+    @get('/json/geterrors')
+    def geterrors():
+        if ec.error_message:
+            m = ec.error_message
+            ec.error_message = None
+            return json.dumps( m )
+
+    run(host='0.0.0.0', port=8080)
+    ec.stop()
+
+
+

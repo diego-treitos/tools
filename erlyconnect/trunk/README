@@ -1,0 +1,67 @@
+DESCRIPTION
+-----------
+
+  This application is a web application which is used to concantenate erlyvideo servers. For some reason, an erlyvideo server cannot receive RTMP streams from other erlyvideo server so scalability is lost, as each erlyvideo server can only server ~200 streams.
+  This software is intempted to be used like this:
+
+  EV Parent ---> ErlyConnect ---> EV Son
+
+  (EV) ErlyVideo
+
+  Of course, a good choice is to install ErlyConnect in the same machin that is hosting the EV Son, so you save the ErlyCoonect to EV Son bandwidth. Anyway you can install it wherever you want as it has access to both EV Parent and EV Son.
+
+
+
+USAGE
+-----
+
+   Web interface parameters:
+
+     - Parent   <ip:port> IP and port of the ErlyVideo Parent node.
+                          Note that common parent port is 8082.
+     - Child    <ip:port> IP and port of the ErlyVideo child node.
+                          Note that common son port is 1935.
+     - Refresh  <seconds> Refresh time to update the stream list from the
+                          EarlyVideo Parent node. Default is 10 seconds.
+     - Mode     <mode>    Can be Automatic and Manual.
+                          Automatic: Take all streams from Parend and send
+                                    them to the child. If some stream is
+                                    stopped, it will be restarted.
+                          Manual: You can handle each stream manualy so
+                                  you can stop and start any stream by
+                                  using the buttons in the stream list.
+   
+     Each time you change a parameter in the web interface, you must press
+     the UPDATE button (big button on right side).
+
+     You can start and stop the streams reflection using the START/STOP
+     button (big button on left side).
+
+   Command line arguments:
+
+     * --help shows the command line arguments ;)
+
+
+
+REQUIREMENTS
+------------
+
+      * python >= 2.5 
+      * python-bottle >= 0.10
+      * pylot (from dgtool. It is included under lib directory)
+      * ffmpeg with rtmp support (medibuntu, debian-multimedia, etc)
+
+
+
+INSTALLATION
+------------
+
+  Just exec the erlyconnect python script with the parameters you want. 
+
+
+KNOWN BUGS
+----------
+
+    * In manual mode, selected channels for replication does not restart if they      disappear and then appear again in the parent erlyvideo.
+
+    * WebUI could be better, I know...
