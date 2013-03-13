@@ -1,0 +1,101 @@
+#!/usr/bin/env python
+#-*- coding:utf-8 -*-
+
+import re
+import socket
+import sys
+import os
+from optparse import OptionParser
+
+B_HEADER_RE = re.compile(';;\s*BALANCED_AUTOCHECK::\d+$')
+A_FIELD_RE  = re.compile('(\w\.{0,1})+\s+\d+\s+IN\s+A\s+.*')
+CA_FIELD_RE = re.compile(';;(\w\.{0,1})+\s+\d+\s+IN\s+A\s+.*')
+
+
+#( option parser
+usage = "usage: %prog [options] [dns_files]"
+parser = OptionParser(usage=usage)
+parser.add_option("-c", "--command", action="store", type="string", dest="command", metavar="COMMAND",
+        help="Command to be executed if changes are made. (example:'service bind9 restart')")
+parser.add_option("-t", "--timeout", action="store", type="int", dest="timeout", metavar="TIMEOUT", default=5,
+        help="Socket timeout for unreachable hosts in seconds. Default: 5")
+
+(options, args) = parser.parse_args()
+if not options.command:
+        parser.error('Command not given')
+
+SOCKET_TIMEOUT=options.timeout
+COMMAND=options.command
+DNS_FILES=args
+#) option parser
+
+def check_ip(ip,port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.settimeout( SOCKET_TIMEOUT )
+        s.connect((ip, port))
+        s.shutdown(2)
+        return True
+    except:
+        return False
+
+if __name__ == '__main__':
+
+    flag_CHANGED=False
+
+    for DNS_FILE in DNS_FILES:
+        # Initialize vars
+        flag_port=None
+        ln=0
+        dns_lines = open( DNS_FILE ).readlines()
+        new_lines = ''
+
+        for l in dns_lines:
+            # Increment line number
+            ln+=1
+
+            if not flag_port:
+                # Save line
+                new_lines+=l
+
+                if B_HEADER_RE.match(l):
+                    try:
+                        flag_port=int(l.split('BALANCED_AUTOCHECK::')[1].replace('\n',''))
+                    except ValueError:
+                        print >> sys.stderr, "INVALID SYNTAX: line %d: %s" % (ln, l)
+            else:
+                if A_FIELD_RE.match(l):
+                    sd_ip   = l.split()[4].replace('\n','')
+                    if check_ip(sd_ip, flag_port):
+                        # Save line
+                        new_lines+=l
+                    else:
+                        sd_name = l.split()[0]
+                        sd_ttl = l.split()[1]
+                        # Save line
+                        new_lines+=";;%s %s IN A %s\n" % ( sd_name, sd_ttl, sd_ip )
+                        flag_CHANGED=True
+
+                elif CA_FIELD_RE.match(l):
+                    sd_ip   = l.split()[4].replace('\n','')
+                    if check_ip(sd_ip, flag_port):
+                        sd_name = l.split()[0].replace(';;','')
+                        sd_ttl = l.split()[1]
+                        # Save line
+                        new_lines+="%s %s IN A %s\n" % ( sd_name, sd_ttl, sd_ip )
+                        flag_CHANGED=True
+                    else:
+                        # Save line
+                        new_lines+=l
+
+                else:
+                    flag_port=None
+                    # Save line
+                    new_lines+=l
+
+        dns_file_w = file( DNS_FILE, 'w')
+        dns_file_w.write( new_lines )
+        dns_file_w.close()
+
+    if flag_CHANGED:
+        os.system( COMMAND )
