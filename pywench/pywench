@@ -116,6 +116,8 @@ class WebClient(Thread):
             start = time.time()
             r = self.cpool.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False)
             code = r.status
+        except urllib3.exceptions.MaxRetryError:
+            code = None
         except Exception as e:
             print "Exception occurred: %s" % e.__repr__()
             code = None
