@@ -395,8 +395,8 @@ class DataManager(object):
 
     def replot(self):
         if self.gp:
-            self.ttfb_plot = Gnuplot.PlotItems.Data(self.ttfb_graph, with_="lines lt rgb '#119922' lw 1", smooth='bezier', title="ttfb")
-            self.ttlb_plot = Gnuplot.PlotItems.Data(self.ttlb_graph, with_="lines lt rgb 'blue' lw 1", smooth='bezier', title="ttlb")
+            self.ttfb_plot = Gnuplot.PlotItems.Data(self.ttfb_graph, with_="lines lt rgb '#7733aa44' lw 1", smooth='unique', title="ttfb")
+            self.ttlb_plot = Gnuplot.PlotItems.Data(self.ttlb_graph, with_="lines lt rgb '#773344aa' lw 1", smooth='unique', title="ttlb")
             self.gp.reset()
             self.gp.title('Requests: %d   User concurrency: %d   HTTP %.1f ' % (self.total_requests, self.concurrency, self.http_version/10.))
             self.gp('set grid y')
