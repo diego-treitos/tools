@@ -1,0 +1,45 @@
+
+REQUEST TICKET
+==============
+
+ "{
+    "file": <file_path>,
+    "downloads":<number_of_downloads>,
+    "timeout":<minutes>
+  }"
+
+  - "file": This is the file path or file name to request a ticket for.
+  - "downloads": This is the maximum allowed downloads. After the file is downloaded <number_of_downloads> times, it wont be accessible with this ticket. A number of downloads of 0 means no limit of downloads.
+  - "timeout": Number of minutes for the ticket to be available. After this number of minutes, the ticket will be invalid and the file wont be accessible through this ticket. A number 0 means no limit of time.
+
+   NOTE: If you specify both <number_of_downloads> and <minutes>, the ticket will be unavailable when any of those limits is reached.
+
+   IMPORTANT: Timeout is prefered as sometimes it is hard to detect if a download was completed successfully and without any corruption during transmission.
+
+
+
+ANSWER TO REQUEST
+=================
+
+ "{
+    "file":<file_path_of_requested_file>,
+    "ticket":<string_representing_ticket_id>,
+    "URL":<url_for_the_ticket>,
+    "status": [ "OK" | "FAIL" ],
+    "error": <error_message>
+ }"
+
+    - "file": the same file name or file path than the requested
+    - "ticket": a uniq string 
+    - "URL": url for downloading the file using the ticket. Probably something like "http://downloads.domain.com/ticket/<ticket_string>"
+    - "status": status code
+    - "error": error message if something goes wrong
+
+    If the request goes properly, the "status" will be "OK" and "error" will be an empty string.
+    If there was an error, "status" will be "FAIL" and "ticket" and "URL" will be empty strings. "error" will contain the error message that for now we can describe two:
+      - "not found": Requested file was not found on the system so no ticket was generated.
+      - "internal error": Some proble occurred during the ticket creation.: Some proble occurred during the ticket creation.
+
+      The tickets will be generated as UUIDs, so they will look like this:
+      
+      3e574db3-5896-40e6-b380-34a048801282
