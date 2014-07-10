@@ -114,37 +114,39 @@ class WebClient(Thread):
     def get_times(self, _url):
         try:
             start = time.time()
+            r = None
             r = self.cpool.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False)
+
+            # get http code
             code = r.status
-        except urllib3.exceptions.MaxRetryError:
-            code = None
+
+            # ttfb (time to first byte)
+            r.read(1)
+            ttfb = time.time() - start
+            # ttlb (time to last byte)
+            r.read()
+            ttlb = time.time() - start
+
         except Exception as e:
-            print "\nException occurred: %s" % e.__repr__()
+            if not isinstance(e, (urllib3.exceptions.MaxRetryError)):
+                print "\n[%d] Exception occurred: %s\n" % (self.n, e.__repr__())
+
+            # In case of exception, set code=None so it does not affect timing stats
             code = None
+            ttfb = 0
+            ttlb = 0
 
-        try:
-            if code:
-                # ttfb (time to first byte)
-                r.read(1)
-                ttfb = time.time() - start
-                # ttlb (time to last byte)
-                r.read()
-                ttlb = time.time() - start
-            else:
-                ttfb = 0
-                ttlb = 0
+        finally:
             # Release connection so the pool can continue doing requests
-            r.release_conn()
-        except httplib.IncompleteRead:
-            pass
+            if r is not None: r.release_conn()
 
-        return {
-                'time': start,
-                'url': _url,
-                'code': code,
-                'ttfb': ttfb,
-                'ttlb': ttlb
-                }
+            return {
+                    'time': start,
+                    'url': _url,
+                    'code': code,
+                    'ttfb': ttfb,
+                    'ttlb': ttlb
+                    }
 
     def run(self):
         if self.debug: print '%d: starting thread...' % self.n
@@ -155,7 +157,6 @@ class WebClient(Thread):
             R_LOCK.acquire()
             if self.debug: print '%d: getting url... ' % self.n,
             url = self.url_provider.get_url()
-            sys.stdout.flush()
             if self.debug: print url
             R_LOCK.release()
             if self.debug: print '%d: post-r' % self.n
