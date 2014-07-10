@@ -119,7 +119,7 @@ class WebClient(Thread):
         except urllib3.exceptions.MaxRetryError:
             code = None
         except Exception as e:
-            print "Exception occurred: %s" % e.__repr__()
+            print "\nException occurred: %s" % e.__repr__()
             code = None
 
         try:
@@ -130,11 +130,11 @@ class WebClient(Thread):
                 # ttlb (time to last byte)
                 r.read()
                 ttlb = time.time() - start
-                # Release connection so the pool can continue doing requests
-                r.release_conn()
             else:
                 ttfb = 0
                 ttlb = 0
+            # Release connection so the pool can continue doing requests
+            r.release_conn()
         except httplib.IncompleteRead:
             pass
 
