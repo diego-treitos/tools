@@ -33,8 +33,6 @@ SOCKET_TIMEOUT=90
 R_LOCK=Lock()
 W_LOCK=Lock()
 
-CPOOL=None
-
 def get_connection_pool( host, http_version=11, auth_rule=None ):
     if http_version == 10:
         httplib.HTTPConnection._http_vsn = 10
@@ -52,6 +50,10 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             auth = auth_rule.split('::')
             method=auth[0]
             url=auth[1]
+            
+            if url[:7].lower() != 'http://' or url[:8].lower() != 'https://':
+                raise PywenchException('Bad authentication rule syntax: URL does not start by http:// or https://')
+
             params={}
             for p in auth[2:]:
                 [k,v] = p.split('=')
@@ -94,8 +96,8 @@ class PywenchException(Exception):
     def __init__(self, msg):
         self.val = msg
 
-    def __str__(self, msg):
-        print repr(msg)
+    def __str__(self):
+        return repr( self.val )
 
 
 class WebClient(Thread):
@@ -474,7 +476,7 @@ def pw_getopts():
             dest="auth_rule",
             type="string",
             default=None,
-            help="Adds rule for form authentication with cookies. Syntax: 'METHOD::URL[::param1=value1[::param2=value2]...]'. For example: POST::http://example.com/login.py::user=root::pass=hackme")
+            help="Adds rule for form authentication with cookies. Syntax: 'METHOD::URL[::param1=value1[::param2=value2]...]'. For example: 'POST::http://example.com/login.py::user=root::pass=hackme'. NOTE: Use full url with protocol as in the example.")
     
     parser.add_option("-H", "--http-version",
             action="store",
@@ -519,12 +521,12 @@ def pw_main( opts ):
     # Create needed instances
     up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
     dm = DataManager(total_requests, concurrency, http_version)
-    CPOOL = get_connection_pool( host, http_version, auth_rule )
+    cp = get_connection_pool( host, http_version, auth_rule )
 
     # Create threads for concurrency
     ts = []
     for t in xrange(concurrency):
-        ts.append( WebClient(up,dm,CPOOL))
+        ts.append( WebClient(up,dm,cp))
 
     # Start Threads
     # Aquire read lock so we ensure all threads start the benchmark
@@ -626,5 +628,9 @@ def pw_main( opts ):
     
 
 if __name__ == '__main__':
-    opts = pw_getopts()
-    pw_main( opts )
+    try:
+        opts = pw_getopts()
+        pw_main( opts )
+    except PywenchException as e:
+        print 'Error:',e.__str__()
+        sys.exit(1)
