@@ -595,7 +595,9 @@ def pw_main( opts ):
     print 'NOTE: These stats are based on the average time (ttfb or ttlb) for each url.'
     print '\n'
     print 'Protocol stats:'
-    for c in stats['code']:
+    code_list = stats['code'].keys()
+    code_list.sort()
+    for c in code_list:
         # Avoid None codes due to connection errors
         if c:
             print '\tHTTP %d: ' % c,
