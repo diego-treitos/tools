@@ -285,7 +285,7 @@ class DataManager(object):
             self.gp('set terminal x11 position "0,0"')
 
     def save(self, filenames_prefix='output'):
-        f = file(filenames_prefix+'.log','w')
+        f = file(filenames_prefix+'.csv','w')
         dkeys = self.data.keys()
         dkeys.sort()
         f.write('time\t\turl\t\tttfb\t\tttlb\n')
@@ -415,11 +415,18 @@ class DataManager(object):
 def pw_getopts():
     parser = OptionParser(usage="usage: %prog [options] -s SERVER -u URLS_FILE -c CONCURRENCY -n NUMBER_OF_REQUESTS")
 
+    parser.add_option("-i", "--test-id",
+            action="store",
+            dest="test_id",
+            type="string",
+            default=False,
+            help="Identificator for the test. This name will be a suffix for the output files.")
+
     parser.add_option("-s", "--server",
             action="store",
             dest="server",
             type="string",
-            default=False,
+            default=None,
             help="Server to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
     
     parser.add_option("-u", "--urls",
@@ -502,6 +509,7 @@ def pw_main( opts ):
     replace_parameter=opts.replace_parameter
     replace_parameter
     auth_rule=opts.auth_rule
+    test_id=opts.test_id
 
     # Create needed instances
     up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
@@ -604,7 +612,12 @@ def pw_main( opts ):
     dm.replot()
    
     # Saving information
-    dm.save('%s_r%d_c%d_http%d' %(host.split('://')[1],total_requests,concurrency,http_version))
+    if test_id:
+        file_prefix='%s_%s_r%d_c%d_http%d' %(test_id,host.split('://')[1],total_requests,concurrency,http_version)
+    else:
+        file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1],total_requests,concurrency,http_version)
+
+    dm.save( file_prefix )
     
 
 if __name__ == '__main__':
