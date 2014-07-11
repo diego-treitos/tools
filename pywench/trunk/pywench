@@ -321,7 +321,8 @@ class DataManager(object):
                     'max_ttlb':None
                     },
                 'code':{
-                    }
+                    },
+                'rps':None
                 }
        
         # Stats for TTFB and TTLB
@@ -395,6 +396,10 @@ class DataManager(object):
                     self.stat['url']['min_ttlb']=(ud[k][1],k)
                 if ud[k][1] > self.stat['url']['max_ttlb'][0]:
                     self.stat['url']['max_ttlb']=(ud[k][1],k)
+
+        # get requests per second
+        self.stat['rps']=self.concurrency/self.stat['ttlb']['avg']
+
         return self.stat
 
     def replot(self):
@@ -579,7 +584,7 @@ def pw_main( opts ):
     print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'],stats['ttfb']['avg'],stats['ttfb']['max'])
     print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'],stats['ttlb']['avg'],stats['ttlb']['max'])
     print '\n'
-    print 'Requests per second: %.3f' % (concurrency/stats['ttlb']['avg'])
+    print 'Requests per second: %.3f' % stats['rps']
     print '\n'
     print 'URL min ttfb: (%.5f) %s' % stats['url']['min_ttfb']
     print 'URL max ttfb: (%.5f) %s' % stats['url']['max_ttfb']
