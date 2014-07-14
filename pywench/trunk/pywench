@@ -521,11 +521,12 @@ def pw_main( opts ):
     # Create needed instances
     up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
     dm = DataManager(total_requests, concurrency, http_version)
-    cp = get_connection_pool( host, http_version, auth_rule )
 
     # Create threads for concurrency
     ts = []
     for t in xrange(concurrency):
+        # Using a connection pool per thread seems to be faster
+        cp = get_connection_pool( host, http_version, auth_rule )
         ts.append( WebClient(up,dm,cp))
 
     # Start Threads
