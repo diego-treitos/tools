@@ -26,6 +26,7 @@ import sys
 import pprint
 from optparse import OptionParser
 
+urllib3.disable_warnings()
 
 DEBUG=False
 SOCKET_TIMEOUT=90
