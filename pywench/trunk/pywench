@@ -259,12 +259,13 @@ class UrlProvider(object):
 
 class DataManager(object):
 
-    def __init__(self, total_requests, concurrency, http_version):
+    def __init__(self, total_requests, concurrency, http_version, x11=False):
         self.data = {}
 
         self.total_requests = total_requests
         self.concurrency = concurrency
         self.http_version = http_version
+        self.x11 = x11
 
         self.ttfb_graph = []
         self.ttlb_graph = []
@@ -284,9 +285,10 @@ class DataManager(object):
             self.gp = Gnuplot.Gnuplot()
             # Uncomment and comment x11 lines for ascii art
             #self.gp('set terminal dumb 144 69')
-            self.gp('set terminal x11 noraise nopersist')
-            self.gp('set terminal x11 size "800,600"')
-            self.gp('set terminal x11 position "0,0"')
+            if self.x11:
+                self.gp('set terminal x11 noraise nopersist')
+                self.gp('set terminal x11 size "800,600"')
+                self.gp('set terminal x11 position "0,0"')
 
     def save(self, filenames_prefix='output'):
         f = file(filenames_prefix+'.csv','w')
@@ -522,7 +524,7 @@ def pw_main( opts ):
 
     # Create needed instances
     up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
-    dm = DataManager(total_requests, concurrency, http_version)
+    dm = DataManager(total_requests, concurrency, http_version, x11=dynamic_plot)
 
     # Create threads for concurrency
     ts = []
