@@ -343,18 +343,18 @@ class DataManager(object):
         count=0
         for d in self.data:
             # Init codes
-            if self.stat['code'].has_key(self.data[d]['code']):
+            if self.data[d]['code'] in self.stat['code']:
                 self.stat['code'][self.data[d]['code']]+=1
             else:
                 self.stat['code'][self.data[d]['code']]=1
 
             # Avoid failed request to affect stats
-            if self.data[d]['code'] == None:
+            if self.data[d]['code'] is None:
                 continue
 
             count+=1
             # Init
-            if self.stat['ttfb']['min'] == None:
+            if self.stat['ttfb']['min'] is None:
                 self.stat['ttfb']['min'] = self.data[d]['ttfb']
                 self.stat['ttfb']['avg'] = self.data[d]['ttfb']
                 self.stat['ttfb']['max'] = self.data[d]['ttfb']
@@ -368,21 +368,22 @@ class DataManager(object):
                 if self.data[d]['ttlb'] < self.stat['ttlb']['min']:
                     self.stat['ttlb']['min'] = self.data[d]['ttlb']
 
-                # Max 
+                # Max
                 if self.data[d]['ttfb'] > self.stat['ttfb']['max']:
                     self.stat['ttfb']['max'] = self.data[d]['ttfb']
                 if self.data[d]['ttlb'] > self.stat['ttlb']['max']:
                     self.stat['ttlb']['max'] = self.data[d]['ttlb']
-                
+
                 # Avg
                 self.stat['ttfb']['avg'] = self.stat['ttfb']['avg'] + (self.data[d]['ttfb']-self.stat['ttfb']['avg'])/float(count)
                 self.stat['ttlb']['avg'] = self.stat['ttlb']['avg'] + (self.data[d]['ttlb']-self.stat['ttlb']['avg'])/float(count)
 
+        req_count=count
 
         # self.stats for URL
         ud = {}
         for d in self.data:
-            if not ud.has_key( self.data[d]['url'] ):
+            if self.data[d]['url'] not in ud:
                 # Init ud for new url with ttfb, ttlb and the count of url occurrences (for mean calculation)
                 ud[self.data[d]['url']]=[ self.data[d]['ttfb'], self.data[d]['ttlb'], 1]
             else:
@@ -397,22 +398,22 @@ class DataManager(object):
         for k in ud:
             # Init
             if not self.stat['url']['min_ttfb']:
-                self.stat['url']['min_ttfb'] = (ud[k][0],k)
-                self.stat['url']['max_ttfb'] = (ud[k][0],k)
-                self.stat['url']['min_ttlb'] = (ud[k][1],k)
-                self.stat['url']['max_ttlb'] = (ud[k][1],k)
+                self.stat['url']['min_ttfb'] = (ud[k][0], k)
+                self.stat['url']['max_ttfb'] = (ud[k][0], k)
+                self.stat['url']['min_ttlb'] = (ud[k][1], k)
+                self.stat['url']['max_ttlb'] = (ud[k][1], k)
             else:
                 if ud[k][0] < self.stat['url']['min_ttfb'][0]:
-                    self.stat['url']['min_ttfb']=(ud[k][0],k)
+                    self.stat['url']['min_ttfb']=(ud[k][0], k)
                 if ud[k][0] > self.stat['url']['max_ttfb'][0]:
-                    self.stat['url']['max_ttfb']=(ud[k][0],k)
+                    self.stat['url']['max_ttfb']=(ud[k][0], k)
                 if ud[k][1] < self.stat['url']['min_ttlb'][0]:
-                    self.stat['url']['min_ttlb']=(ud[k][1],k)
+                    self.stat['url']['min_ttlb']=(ud[k][1], k)
                 if ud[k][1] > self.stat['url']['max_ttlb'][0]:
-                    self.stat['url']['max_ttlb']=(ud[k][1],k)
+                    self.stat['url']['max_ttlb']=(ud[k][1], k)
 
         # get requests per second
-        self.stat['rps']=count/( STOP_TIME-START_TIME )
+        self.stat['rps']=req_count/( STOP_TIME-START_TIME )
 
         return self.stat
 
