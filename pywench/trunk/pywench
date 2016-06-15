@@ -537,6 +537,8 @@ def pw_main( opts ):
     # Aquire read lock so we ensure all threads start the benchmark
     # at the same time.
     R_LOCK.acquire()
+    global START_TIME
+    START_TIME=time.time()
     i=1
     for t in ts:
         t.n=i
@@ -551,8 +553,6 @@ def pw_main( opts ):
    
     # Main loop with progress bar and plotting
     time.sleep(1)
-    global START_TIME
-    START_TIME=time.time()
     while up.requests_number > 0:
         per=(up.requests_number*bs)/total_requests
         print '[%s%s] ' % ('='*(bs-per),' '*per),
