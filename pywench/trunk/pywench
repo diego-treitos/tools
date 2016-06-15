@@ -539,21 +539,20 @@ def pw_main( opts ):
     for t in xrange(concurrency):
         # Using a connection pool per thread seems to be faster
         cp = get_connection_pool( host, http_version, auth_rule )
-        ts.append( WebClient(up,dm,cp))
+        ts.append( WebClient(up, dm, cp) )
 
     # Start Threads
     # Aquire read lock so we ensure all threads start the benchmark
     # at the same time.
     R_LOCK.acquire()
-    global START_TIME
-    START_TIME=time.time()
     i=1
     for t in ts:
         t.n=i
         i+=1
         t.start()
+    global START_TIME
+    START_TIME=time.time()
     R_LOCK.release()
-
 
     print "\n Requests: %d\t\tConcurrency: %d\n" % (total_requests, ts.__len__())
     # bs: progress bar size
@@ -563,7 +562,7 @@ def pw_main( opts ):
     time.sleep(1)
     while up.requests_number > 0:
         per=(up.requests_number*bs)/total_requests
-        print '[%s%s] ' % ('='*(bs-per),' '*per),
+        print '[%s%s] ' % ('='*(bs-per), ' '*per),
         sys.stdout.flush()
         time.sleep(0.5)
         print '\r',
