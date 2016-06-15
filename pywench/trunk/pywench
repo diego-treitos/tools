@@ -256,12 +256,12 @@ class UrlProvider(object):
         return urls_to_use
 
     def get_url(self):
-        if self.requests_number <= 0:
-            url = None
-        else:
+        if self.urls:
             # Decrease the number of requests to serve
             self.requests_number-=1
             url = self.urls.pop(0)
+        else:
+            url = None
         return url
 
 
