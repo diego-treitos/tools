@@ -17,7 +17,8 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import urllib3, httplib
+import urllib3
+import httplib
 import time
 from threading import Thread, Lock
 from random import Random
@@ -34,6 +35,7 @@ R_LOCK=Lock()
 W_LOCK=Lock()
 START_TIME=0
 STOP_TIME=0
+
 
 def get_connection_pool( host, http_version=11, auth_rule=None ):
     if http_version == 10:
@@ -52,13 +54,13 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             auth = auth_rule.split('::')
             method=auth[0]
             url=auth[1]
-            
+
             if url[:7].lower() != 'http://' or url[:8].lower() != 'https://':
                 raise PywenchException('Bad authentication rule syntax: URL does not start by http:// or https://')
 
             params={}
             for p in auth[2:]:
-                [k,v] = p.split('=')
+                [k, v] = p.split('=')
                 params[k]=v
 
             tpool = urllib3.connectionpool.connection_from_url(url)
@@ -67,15 +69,15 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             tpool.ca_certs = None
 
             if method.lower() == 'get':
-                r = tpool.request('GET','%s?%s' % (url,'&'.join(auth[2:])))
+                r = tpool.request('GET', '%s?%s' % (url, '&'.join(auth[2:])))
                 cookie = r.getheader('set-cookie')
             elif method.lower() == 'post':
-                r = tpool.request('POST','%s',fields=params)
+                r = tpool.request('POST', '%s', fields=params)
                 cookie = r.getheader('set-cookie')
             else:
                 raise PywenchException('Bad authentication rule syntax: Only POST or GET methods allowed.')
 
-            cpool = urllib3.connectionpool.connection_from_url(host, headers={'cookie':cookie})
+            cpool = urllib3.connectionpool.connection_from_url(host, headers={'Cookie': cookie})
 
         except IndexError:
             raise PywenchException('Bad authentication rule syntax')
@@ -85,6 +87,7 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
     cpool.ca_certs = None
 
     return cpool
+
 
 def print_debug( msg, new_line=True):
     if new_line:
@@ -188,72 +191,77 @@ class UrlProvider(object):
 
     def __init__(self, urls_file_path, mode, requests_number, replace_parameter_list=[]):
         """mode = [random,squence]"""
+
+        if mode.lower() not in ('random', 'sequence'):
+            raise PywenchException('Invalid url choosing mode')
+
+        self.requests_number = requests_number
+        self.mode = mode.lower()
+        self.replace_parameter_dict = {}
+        self.__parse_replace_parameter( replace_parameter_list )
+
         try:
             self.urls = self.__filter_urls(urls_file_path)
         except IOError:
             raise PywenchException('Unable to open file: %s' % urls_file_path)
-    
-        if mode.lower() not in ('random','sequence'):
-            raise PywenchException('Invalid url choosing mode')
-
-        self.mode = mode.lower()
-        self.requests_number = requests_number
-        self.__n_urls = self.urls.__len__()
-        self.__url_index = None
-        self.replace_parameter_dict = {}
-        self.__parse_replace_parameter( replace_parameter_list )
 
     def __parse_replace_parameter(self, rpl):
         for rp in rpl:
-            npk,npv = rp.split('=')
+            npk, npv = rp.split('=')
             self.replace_parameter_dict[npk] = npv
 
     def __filter_urls(self, access_file):
         urls = []
+        urls_to_use = []
+        r = Random()
+
         lines = open(access_file).readlines()
         for l in lines:
             if l.find('GET') != -1:
                 urls.append(l.split()[6])
-        return urls
 
+        url_index = None
+        n_urls = urls.__len__()
+        for i in range(0, self.requests_number):
+            if self.mode == 'random':
+                u = urls[ r.randint(0, n_urls-1) ]
+            elif self.mode == 'sequence':
+                # (Re)set the index
+                if url_index is None or url_index == n_urls-1:
+                    url_index = -1
+                url_index+=1
+                u = urls[ url_index ]
+
+            url = u.strip()
+
+            # If url is not a relative path, search for other url
+            if url[:7].lower() == "http://" or url[:8].lower() == "https://":
+                i+=1
+                continue
+
+            if self.replace_parameter_dict != {} and url.find('?') != -1:
+                [rawurl, rawp] = url.split('?')
+                params='?'
+                for p in rawp.split('&'):
+                    [k, v]=p.split('=')
+                    if k in self.replace_parameter_dict:
+                        params+="%s=%s&" % (k, self.replace_parameter_dict[k])
+                    else:
+                        params+="%s=%s&" % (k, v)
+                # remove last &
+                params=params[:-1]
+                url = rawurl+params
+            urls_to_use.append( url )
+
+        return urls_to_use
 
     def get_url(self):
         if self.requests_number <= 0:
             url = None
         else:
-            if self.mode == 'random':
-                r = Random()
-                u = self.urls[ r.randint(0, self.__n_urls-1) ]
-            elif self.mode == 'sequence':
-                # (Re)set the index
-                if self.__url_index == None or self.__url_index == self.__n_urls-1:
-                    self.__url_index = -1 
-                self.__url_index+=1 
-                u = self.urls[ self.__url_index ]
-            
-            url = u.strip()
-
-            # If url is not a relative path, search for other url
-            if url[:7].lower() == "http://" or url[:8].lower() == "https://":
-                return self.get_url()
-
             # Decrease the number of requests to serve
             self.requests_number-=1
-
-            if self.replace_parameter_dict != {} and url.find('?') != -1:
-                [rawurl,rawp] = url.split('?')
-                params='?'
-                for p in rawp.split('&'):
-                    [k,v]=p.split('=')
-                    if self.replace_parameter_dict.has_key(k):
-                        params+="%s=%s&" % (k,self.replace_parameter_dict[k])
-                    else:
-                        params+="%s=%s&" % (k,v)
-                # remove last &
-                params=params[:-1]
-                return rawurl+params
-
-
+            url = self.urls.pop(0)
         return url
 
 
@@ -422,7 +430,6 @@ class DataManager(object):
             self.gp.replot(self.ttfb_plot, self.ttlb_plot)
 
 
-
 def pw_getopts():
     parser = OptionParser(usage="usage: %prog [options] -s SERVER -u URLS_FILE -c CONCURRENCY -n NUMBER_OF_REQUESTS")
 
@@ -507,7 +514,8 @@ def pw_getopts():
         parser.error('Number of requests not given (-n)')
 
     return opts
-    
+
+
 def pw_main( opts ):
     # Set parameters
     urls_file=opts.urls_file
@@ -523,7 +531,7 @@ def pw_main( opts ):
     test_id=opts.test_id
 
     # Create needed instances
-    up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
+    up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
     dm = DataManager(total_requests, concurrency, http_version, x11=dynamic_plot)
 
     # Create threads for concurrency
@@ -550,7 +558,7 @@ def pw_main( opts ):
     print "\n Requests: %d\t\tConcurrency: %d\n" % (total_requests, ts.__len__())
     # bs: progress bar size
     bs=50
-   
+
     # Main loop with progress bar and plotting
     time.sleep(1)
     while up.requests_number > 0:
@@ -636,12 +644,12 @@ def pw_main( opts ):
         file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1],total_requests,concurrency,http_version)
 
     dm.save( file_prefix )
-    
+
 
 if __name__ == '__main__':
     try:
         opts = pw_getopts()
         pw_main( opts )
     except PywenchException as e:
-        print 'Error:',e.__str__()
+        print 'Error:', e.__str__()
         sys.exit(1)
