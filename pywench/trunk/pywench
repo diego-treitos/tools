@@ -32,6 +32,8 @@ SOCKET_TIMEOUT=90
 
 R_LOCK=Lock()
 W_LOCK=Lock()
+START_TIME=0
+STOP_TIME=0
 
 def get_connection_pool( host, http_version=11, auth_rule=None ):
     if http_version == 10:
@@ -400,7 +402,7 @@ class DataManager(object):
                     self.stat['url']['max_ttlb']=(ud[k][1],k)
 
         # get requests per second
-        self.stat['rps']=self.concurrency/self.stat['ttlb']['avg']
+        self.stat['rps']=count/( STOP_TIME-START_TIME )
 
         return self.stat
 
@@ -547,6 +549,8 @@ def pw_main( opts ):
    
     # Main loop with progress bar and plotting
     time.sleep(1)
+    global START_TIME
+    START_TIME=time.time()
     while up.requests_number > 0:
         per=(up.requests_number*bs)/total_requests
         print '[%s%s] ' % ('='*(bs-per),' '*per),
@@ -557,6 +561,8 @@ def pw_main( opts ):
         if dynamic_plot: dm.replot()
     print '[%s] ' % ('='*bs)
     sys.stdout.flush()
+    global STOP_TIME
+    STOP_TIME=time.time()
 
     # Stopping threads
     print ""
