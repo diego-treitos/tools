@@ -20,10 +20,13 @@
 import urllib3
 import httplib
 import time
-from threading import Thread, Lock
+
+from multiprocessing import Process, Event, Queue, Manager
+
 from random import Random
 import Gnuplot
 import sys
+import os
 import pprint
 from optparse import OptionParser
 
@@ -31,8 +34,6 @@ from optparse import OptionParser
 DEBUG=False
 SOCKET_TIMEOUT=90
 
-R_LOCK=Lock()
-W_LOCK=Lock()
 START_TIME=0
 STOP_TIME=0
 
@@ -91,9 +92,9 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
 
 def print_debug( msg, new_line=True):
     if new_line:
-        print(msg)
+        print msg
     else:
-        print(msg, end='')
+        print msg,
     sys.stdout.flush()
 
 
@@ -105,28 +106,26 @@ class PywenchException(Exception):
         return repr( self.val )
 
 
-class WebClient(Thread):
+def request_worker( event, connection_variables, urls, data):
+    """
+    event : multiprocessing.Event
+    connection_variables: dict
+    urls: multiprocessing.Queue
+    """
+    event.wait()
 
-    def __init__(self, url_provider, data_manager, connection_pool ):
-        super(WebClient, self).__init__()
-        self.__stop = None
+    cp = get_connection_pool(
+        connection_variables['host'],
+        connection_variables['http_version'],
+        connection_variables['auth_rule']
+    )
 
-        self.url_provider = url_provider
-        self.data_manager = data_manager
-        self.cpool = connection_pool
-
-        self.debug=DEBUG
-        self.n=None
-
-    def stop(self):
-        if not self.__stop:
-            self.__stop=True
-
-    def get_times(self, _url):
+    while not urls.empty():
         try:
+            _url = urls.get()
             start = time.time()
             r = None
-            r = self.cpool.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
+            r = cp.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
 
             # get http code
             code = r.status
@@ -139,8 +138,8 @@ class WebClient(Thread):
             ttlb = time.time() - start
 
         except Exception as e:
-            if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and self.debug:
-                print_debug("\n[%d] Exception occurred: %s\n" % (self.n, e.__repr__()))
+            if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and DEBUG:
+                print_debug("\n[%d] Exception occurred: %s\n" % (os.getpid(), e.__repr__()))
 
             # In case of exception, set code=None so it does not affect timing stats
             code = None
@@ -149,42 +148,18 @@ class WebClient(Thread):
 
         finally:
             # Release connection so the pool can continue doing requests
-            if r is not None: r.release_conn()
+            if r is not None:
+                r.release_conn()
 
-            return {
+            data.append(
+                {
                     'time': start,
                     'url': _url,
                     'code': code,
                     'ttfb': ttfb,
                     'ttlb': ttlb
-            }
-
-    def run(self):
-        if self.debug: print_debug('%d: starting thread...' % self.n)
-        self.__stop = False
-        while not self.__stop:
-            if self.debug: print_debug('%d: pre-r' % self.n)
-            R_LOCK.acquire()
-            if self.debug: print_debug('%d: getting url... ' % self.n)
-            url = self.url_provider.get_url()
-            if self.debug: print_debug('%d: url: %s... ' % (self.n, url))
-            R_LOCK.release()
-            if self.debug: print_debug('%d: post-r' % self.n)
-            if url == None:
-                if self.debug: print_debug('%d: stopping thread...' % self.n)
-                self.stop()
-                if self.debug: print_debug('%d: stopped !!' % self.n)
-            else:
-                if self.debug: print_debug('%d: getting data... ' % self.n)
-                d = self.get_times( url )
-                if self.debug: print_debug('%d: data: %s... ' % (self.n, repr(d)))
-                if self.debug: print_debug('%d: pre-w' % self.n)
-                W_LOCK.acquire()
-                if self.debug: print_debug('%d: adding data... ' % self.n)
-                self.data_manager.add_data( d )
-                if self.debug: print_debug('%d: data added.' % self.n)
-                W_LOCK.release()
-                if self.debug: print_debug('%d: post-w' % self.n)
+                }
+            )
 
 
 class UrlProvider(object):
@@ -201,7 +176,7 @@ class UrlProvider(object):
         self.__parse_replace_parameter( replace_parameter_list )
 
         try:
-            self.urls = self.__filter_urls(urls_file_path)
+            self.queue = self.__filter_urls(urls_file_path)
         except IOError:
             raise PywenchException('Unable to open file: %s' % urls_file_path)
 
@@ -212,7 +187,7 @@ class UrlProvider(object):
 
     def __filter_urls(self, access_file):
         urls = []
-        urls_to_use = []
+        urls_to_use = Queue()
         r = Random()
 
         lines = open(access_file).readlines()
@@ -251,18 +226,9 @@ class UrlProvider(object):
                 # remove last &
                 params=params[:-1]
                 url = rawurl+params
-            urls_to_use.append( url )
+            urls_to_use.put( url )
 
         return urls_to_use
-
-    def get_url(self):
-        if self.urls:
-            # Decrease the number of requests to serve
-            self.requests_number-=1
-            url = self.urls.pop(0)
-        else:
-            url = None
-        return url
 
 
 class DataManager(object):
@@ -281,6 +247,7 @@ class DataManager(object):
         self.ttlb_plot = None
         self.gp = None
         self.stat = None
+        self.output = ''
 
     def add_data(self, d):
         self.data[d['time']] = d
@@ -308,12 +275,16 @@ class DataManager(object):
         pprint.pprint(self.stat, stream=f)
         f.close()
 
+        f = file(filenames_prefix+'.txt', 'w')
+        f.write(self.output)
+        f.close()
+
         self.replot()
         self.gp.hardcopy(filename=filenames_prefix+'.png', terminal='png')
         self.gp.close()
         self.gp.__del__()
 
-    def stats(self):
+    def compile_stats(self):
         self.stat={
                 'ttfb': {
                     'min': None,
@@ -413,6 +384,32 @@ class DataManager(object):
         self.stat['rps']=req_count/( STOP_TIME-START_TIME )
 
         return self.stat
+
+    def print_stats(self):
+        self.output+= 'Stats (seconds)\n\n'
+        self.output+= '\t\tmin\t\tavg\t\tmax\n'
+        self.output+= 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
+        self.output+= 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
+        self.output+= '\n\n'
+        self.output+= 'Requests per second: %.3f\n' % self.stat['rps']
+        self.output+= '\n\n'
+        self.output+= 'URL min ttfb: (%.5f) %s\n' % self.stat['url']['min_ttfb']
+        self.output+= 'URL max ttfb: (%.5f) %s\n' % self.stat['url']['max_ttfb']
+        self.output+= 'URL min ttlb: (%.5f) %s\n' % self.stat['url']['min_ttlb']
+        self.output+= 'URL max ttlb: (%.5f) %s\n' % self.stat['url']['max_ttlb']
+        self.output+= 'NOTE: These stats are based on the average time (ttfb or ttlb) for each url.\n'
+        self.output+= '\n\n'
+        self.output+= 'Protocol stats:\n'
+        code_list = self.stat['code'].keys()
+        code_list.sort()
+        for c in code_list:
+            # Avoid None codes due to connection errors
+            if c:
+                self.output+= '\tHTTP %d: ' % c
+            else:
+                self.output+= '\tURL fail: '
+            self.output+= '%5d requests (%5.2f%%)\n' % (self.stat['code'][c], 100*float(self.stat['code'][c])/self.total_requests)
+        print self.output
 
     def replot(self):
         if self.gp:
@@ -515,6 +512,8 @@ def pw_getopts():
 
 
 def pw_main( opts ):
+    print '\nSetting up...',
+    sys.stdout.flush()
     # Set parameters
     urls_file=opts.urls_file
     mode=opts.mode
@@ -531,96 +530,74 @@ def pw_main( opts ):
     # Create needed instances
     up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
     dm = DataManager(total_requests, concurrency, http_version, x11=dynamic_plot)
+    pm = Manager()
+    raw_data = pm.list()
+    event = Event()
 
     # Create threads for concurrency
-    ts = []
-    for t in xrange(concurrency):
-        # Using a connection pool per thread seems to be faster
-        cp = get_connection_pool( host, http_version, auth_rule )
-        ts.append( WebClient(up, dm, cp) )
+    ps = []
+    for p in xrange(concurrency):
+        p = Process(
+            target = request_worker,
+            args = (
+                event,
+                {
+                    'host': host,
+                    'http_version': http_version,
+                    'auth_rule': auth_rule
+                },
+                up.queue,
+                raw_data
+            )
+        )
+        ps.append( p )
 
     # Start Threads
     # Aquire read lock so we ensure all threads start the benchmark
     # at the same time.
-    R_LOCK.acquire()
-    i=1
-    for t in ts:
-        t.n=i
-        i+=1
-        t.start()
+    for p in ps:
+        p.start()
     global START_TIME
     START_TIME=time.time()
-    R_LOCK.release()
+    event.set()
 
-    print "\n Requests: %d\t\tConcurrency: %d\n" % (total_requests, ts.__len__())
+    print "\rRequests: %d\t\tConcurrency: %d\n" % (total_requests, ps.__len__())
     # bs: progress bar size
     bs=50
 
     # Main loop with progress bar and plotting
     time.sleep(1)
-    while up.requests_number > 0:
-        per=(up.requests_number*bs)/total_requests
+    while not up.queue.empty():
+        per=(up.queue.qsize()*bs)/total_requests
         print '[%s%s] ' % ('='*(bs-per), ' '*per),
         sys.stdout.flush()
         time.sleep(0.5)
         print '\r',
         sys.stdout.flush()
-        if dynamic_plot:
-            dm.replot()
-    print '[%s] ' % ('='*bs)
+    print '%s  \n' % (' '*bs),
     sys.stdout.flush()
     global STOP_TIME
     STOP_TIME=time.time()
 
     # Stopping threads
-    print ""
-    print "Stopping... ",
+    print 'Stopping...',
     sys.stdout.flush()
-    # First call stop for each thread
-    for t in ts:
-        t.stop()
     # Then wait for all threads to stop
-    for t in ts:
-        print t.n,
-        sys.stdout.flush()
-        t.join()
-        print "\b"*(str(t.n).__len__()+2),
-        sys.stdout.flush()
-    print "DONE"
-    sys.stdout.flush()
+    for p in ps:
+        p.join()
 
-    print "\nCompiling stats...",
+    print "\rCompiling stats...",
     sys.stdout.flush()
-    stats = dm.stats()
-    print "DONE"
-    sys.stdout.flush()
+    for d in raw_data:
+        dm.add_data(d)
+    dm.compile_stats()
 
-    print '\nStats (seconds)\n'
-    print '\t\tmin\t\tavg\t\tmax'
-    print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'], stats['ttfb']['avg'], stats['ttfb']['max'])
-    print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'], stats['ttlb']['avg'], stats['ttlb']['max'])
-    print '\n'
-    print 'Requests per second: %.3f' % stats['rps']
-    print '\n'
-    print 'URL min ttfb: (%.5f) %s' % stats['url']['min_ttfb']
-    print 'URL max ttfb: (%.5f) %s' % stats['url']['max_ttfb']
-    print 'URL min ttlb: (%.5f) %s' % stats['url']['min_ttlb']
-    print 'URL max ttlb: (%.5f) %s' % stats['url']['max_ttlb']
-    print 'NOTE: These stats are based on the average time (ttfb or ttlb) for each url.'
-    print '\n'
-    print 'Protocol stats:'
-    code_list = stats['code'].keys()
-    code_list.sort()
-    for c in code_list:
-        # Avoid None codes due to connection errors
-        if c:
-            print '\tHTTP %d: ' % c,
-        else:
-            print '\tURL fail: ',
-        print '%5d requests (%5.2f%%)' % (stats['code'][c], 100*float(stats['code'][c])/total_requests)
+    print "\r                  \r",
+    sys.stdout.flush()
+    dm.print_stats()
 
     if dynamic_plot:
-        print '\nPress ENTER to save data and exit.'
+        print '\nPress ENTER to save data and exit. '
         sys.stdout.flush()
         sys.stdin.readline()
 
