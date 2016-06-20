@@ -17,7 +17,8 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import urllib3, httplib
+import urllib3
+import httplib
 import time
 from threading import Thread, Lock
 from random import Random
@@ -26,13 +27,15 @@ import sys
 import pprint
 from optparse import OptionParser
 
-urllib3.disable_warnings()
 
 DEBUG=False
 SOCKET_TIMEOUT=90
 
 R_LOCK=Lock()
 W_LOCK=Lock()
+START_TIME=0
+STOP_TIME=0
+
 
 def get_connection_pool( host, http_version=11, auth_rule=None ):
     if http_version == 10:
@@ -51,13 +54,13 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             auth = auth_rule.split('::')
             method=auth[0]
             url=auth[1]
-            
+
             if url[:7].lower() != 'http://' or url[:8].lower() != 'https://':
                 raise PywenchException('Bad authentication rule syntax: URL does not start by http:// or https://')
 
             params={}
             for p in auth[2:]:
-                [k,v] = p.split('=')
+                [k, v] = p.split('=')
                 params[k]=v
 
             tpool = urllib3.connectionpool.connection_from_url(url)
@@ -66,15 +69,15 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             tpool.ca_certs = None
 
             if method.lower() == 'get':
-                r = tpool.request('GET','%s?%s' % (url,'&'.join(auth[2:])))
+                r = tpool.request('GET', '%s?%s' % (url, '&'.join(auth[2:])))
                 cookie = r.getheader('set-cookie')
             elif method.lower() == 'post':
-                r = tpool.request('POST','%s',fields=params)
+                r = tpool.request('POST', '%s', fields=params)
                 cookie = r.getheader('set-cookie')
             else:
                 raise PywenchException('Bad authentication rule syntax: Only POST or GET methods allowed.')
 
-            cpool = urllib3.connectionpool.connection_from_url(host, headers={'cookie':cookie})
+            cpool = urllib3.connectionpool.connection_from_url(host, headers={'Cookie': cookie})
 
         except IndexError:
             raise PywenchException('Bad authentication rule syntax')
@@ -85,11 +88,12 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
 
     return cpool
 
+
 def print_debug( msg, new_line=True):
     if new_line:
-        print msg
+        print(msg)
     else:
-        print msg,
+        print(msg, end='')
     sys.stdout.flush()
 
 
@@ -115,9 +119,9 @@ class WebClient(Thread):
         self.n=None
 
     def stop(self):
-        if self.__stop == False:
+        if not self.__stop:
             self.__stop=True
-        
+
     def get_times(self, _url):
         try:
             start = time.time()
@@ -153,7 +157,7 @@ class WebClient(Thread):
                     'code': code,
                     'ttfb': ttfb,
                     'ttlb': ttlb
-                    }
+            }
 
     def run(self):
         if self.debug: print_debug('%d: starting thread...' % self.n)
@@ -187,83 +191,89 @@ class UrlProvider(object):
 
     def __init__(self, urls_file_path, mode, requests_number, replace_parameter_list=[]):
         """mode = [random,squence]"""
+
+        if mode.lower() not in ('random', 'sequence'):
+            raise PywenchException('Invalid url choosing mode')
+
+        self.requests_number = requests_number
+        self.mode = mode.lower()
+        self.replace_parameter_dict = {}
+        self.__parse_replace_parameter( replace_parameter_list )
+
         try:
             self.urls = self.__filter_urls(urls_file_path)
         except IOError:
             raise PywenchException('Unable to open file: %s' % urls_file_path)
-    
-        if mode.lower() not in ('random','sequence'):
-            raise PywenchException('Invalid url choosing mode')
-
-        self.mode = mode.lower()
-        self.requests_number = requests_number
-        self.__n_urls = self.urls.__len__()
-        self.__url_index = None
-        self.replace_parameter_dict = {}
-        self.__parse_replace_parameter( replace_parameter_list )
 
     def __parse_replace_parameter(self, rpl):
         for rp in rpl:
-            npk,npv = rp.split('=')
+            npk, npv = rp.split('=')
             self.replace_parameter_dict[npk] = npv
 
     def __filter_urls(self, access_file):
         urls = []
+        urls_to_use = []
+        r = Random()
+
         lines = open(access_file).readlines()
         for l in lines:
             if l.find('GET') != -1:
                 urls.append(l.split()[6])
-        return urls
 
-
-    def get_url(self):
-        if self.requests_number <= 0:
-            url = None
-        else:
+        url_index = None
+        n_urls = urls.__len__()
+        for i in range(0, self.requests_number):
             if self.mode == 'random':
-                r = Random()
-                u = self.urls[ r.randint(0, self.__n_urls-1) ]
+                u = urls[ r.randint(0, n_urls-1) ]
             elif self.mode == 'sequence':
                 # (Re)set the index
-                if self.__url_index == None or self.__url_index == self.__n_urls-1:
-                    self.__url_index = -1 
-                self.__url_index+=1 
-                u = self.urls[ self.__url_index ]
-            
+                if url_index is None or url_index == n_urls-1:
+                    url_index = -1
+                url_index+=1
+                u = urls[ url_index ]
+
             url = u.strip()
 
             # If url is not a relative path, search for other url
             if url[:7].lower() == "http://" or url[:8].lower() == "https://":
-                return self.get_url()
-
-            # Decrease the number of requests to serve
-            self.requests_number-=1
+                i+=1
+                continue
 
             if self.replace_parameter_dict != {} and url.find('?') != -1:
-                [rawurl,rawp] = url.split('?')
+                [rawurl, rawp] = url.split('?')
                 params='?'
                 for p in rawp.split('&'):
-                    [k,v]=p.split('=')
-                    if self.replace_parameter_dict.has_key(k):
-                        params+="%s=%s&" % (k,self.replace_parameter_dict[k])
+                    [k, v]=p.split('=')
+                    if k in self.replace_parameter_dict:
+                        params+="%s=%s&" % (k, self.replace_parameter_dict[k])
                     else:
-                        params+="%s=%s&" % (k,v)
+                        params+="%s=%s&" % (k, v)
                 # remove last &
                 params=params[:-1]
-                return rawurl+params
+                url = rawurl+params
+            urls_to_use.append( url )
 
+        return urls_to_use
 
+    def get_url(self):
+        if self.urls:
+            # Decrease the number of requests to serve
+            self.requests_number-=1
+            url = self.urls.pop(0)
+        else:
+            url = None
         return url
 
 
 class DataManager(object):
 
-    def __init__(self, total_requests, concurrency, http_version):
+    def __init__(self, total_requests, concurrency, http_version, x11=False):
         self.data = {}
 
         self.total_requests = total_requests
         self.concurrency = concurrency
         self.http_version = http_version
+        self.x11 = x11
 
         self.ttfb_graph = []
         self.ttlb_graph = []
@@ -271,8 +281,6 @@ class DataManager(object):
         self.ttlb_plot = None
         self.gp = None
         self.stat = None
-
-
 
     def add_data(self, d):
         self.data[d['time']] = d
@@ -283,19 +291,20 @@ class DataManager(object):
             self.gp = Gnuplot.Gnuplot()
             # Uncomment and comment x11 lines for ascii art
             #self.gp('set terminal dumb 144 69')
-            self.gp('set terminal x11 noraise nopersist')
-            self.gp('set terminal x11 size "800,600"')
-            self.gp('set terminal x11 position "0,0"')
+            if self.x11:
+                self.gp('set terminal x11 noraise nopersist')
+                self.gp('set terminal x11 size "800,600"')
+                self.gp('set terminal x11 position "0,0"')
 
     def save(self, filenames_prefix='output'):
-        f = file(filenames_prefix+'.csv','w')
+        f = file(filenames_prefix+'.csv', 'w')
         dkeys = self.data.keys()
         dkeys.sort()
         f.write('time\t\turl\t\tttfb\t\tttlb\n')
         for k in dkeys:
-            f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'],self.data[k]['url'],self.data[k]['ttfb'],self.data[k]['ttlb']))
+            f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'], self.data[k]['url'], self.data[k]['ttfb'], self.data[k]['ttlb']))
         f.close()
-        f = file(filenames_prefix+'.stat','w')
+        f = file(filenames_prefix+'.stat', 'w')
         pprint.pprint(self.stat, stream=f)
         f.close()
 
@@ -304,46 +313,45 @@ class DataManager(object):
         self.gp.close()
         self.gp.__del__()
 
-
     def stats(self):
         self.stat={
-                'ttfb':{
-                    'min':None,
-                    'avg':None,
-                    'max':None
-                    },
-                'ttlb':{
-                    'min':None,
-                    'avg':None,
-                    'max':None
-                    },
-                'url':{
-                    'min_ttfb':None,
-                    'max_ttfb':None,
-                    'min_ttlb':None,
-                    'max_ttlb':None
-                    },
-                'code':{
-                    },
-                'rps':None
-                }
-       
+                'ttfb': {
+                    'min': None,
+                    'avg': None,
+                    'max': None
+                },
+                'ttlb': {
+                    'min': None,
+                    'avg': None,
+                    'max': None
+                },
+                'url': {
+                    'min_ttfb': None,
+                    'max_ttfb': None,
+                    'min_ttlb': None,
+                    'max_ttlb': None
+                },
+                'code': {
+                },
+                'rps': None
+        }
+
         # Stats for TTFB and TTLB
         count=0
         for d in self.data:
             # Init codes
-            if self.stat['code'].has_key(self.data[d]['code']):
+            if self.data[d]['code'] in self.stat['code']:
                 self.stat['code'][self.data[d]['code']]+=1
             else:
                 self.stat['code'][self.data[d]['code']]=1
 
             # Avoid failed request to affect stats
-            if self.data[d]['code'] == None:
+            if self.data[d]['code'] is None:
                 continue
 
             count+=1
             # Init
-            if self.stat['ttfb']['min'] == None:
+            if self.stat['ttfb']['min'] is None:
                 self.stat['ttfb']['min'] = self.data[d]['ttfb']
                 self.stat['ttfb']['avg'] = self.data[d]['ttfb']
                 self.stat['ttfb']['max'] = self.data[d]['ttfb']
@@ -357,21 +365,22 @@ class DataManager(object):
                 if self.data[d]['ttlb'] < self.stat['ttlb']['min']:
                     self.stat['ttlb']['min'] = self.data[d]['ttlb']
 
-                # Max 
+                # Max
                 if self.data[d]['ttfb'] > self.stat['ttfb']['max']:
                     self.stat['ttfb']['max'] = self.data[d]['ttfb']
                 if self.data[d]['ttlb'] > self.stat['ttlb']['max']:
                     self.stat['ttlb']['max'] = self.data[d]['ttlb']
-                
+
                 # Avg
                 self.stat['ttfb']['avg'] = self.stat['ttfb']['avg'] + (self.data[d]['ttfb']-self.stat['ttfb']['avg'])/float(count)
                 self.stat['ttlb']['avg'] = self.stat['ttlb']['avg'] + (self.data[d]['ttlb']-self.stat['ttlb']['avg'])/float(count)
 
+        req_count=count
 
         # self.stats for URL
         ud = {}
         for d in self.data:
-            if not ud.has_key( self.data[d]['url'] ):
+            if self.data[d]['url'] not in ud:
                 # Init ud for new url with ttfb, ttlb and the count of url occurrences (for mean calculation)
                 ud[self.data[d]['url']]=[ self.data[d]['ttfb'], self.data[d]['ttlb'], 1]
             else:
@@ -386,22 +395,22 @@ class DataManager(object):
         for k in ud:
             # Init
             if not self.stat['url']['min_ttfb']:
-                self.stat['url']['min_ttfb'] = (ud[k][0],k)
-                self.stat['url']['max_ttfb'] = (ud[k][0],k)
-                self.stat['url']['min_ttlb'] = (ud[k][1],k)
-                self.stat['url']['max_ttlb'] = (ud[k][1],k)
+                self.stat['url']['min_ttfb'] = (ud[k][0], k)
+                self.stat['url']['max_ttfb'] = (ud[k][0], k)
+                self.stat['url']['min_ttlb'] = (ud[k][1], k)
+                self.stat['url']['max_ttlb'] = (ud[k][1], k)
             else:
                 if ud[k][0] < self.stat['url']['min_ttfb'][0]:
-                    self.stat['url']['min_ttfb']=(ud[k][0],k)
+                    self.stat['url']['min_ttfb']=(ud[k][0], k)
                 if ud[k][0] > self.stat['url']['max_ttfb'][0]:
-                    self.stat['url']['max_ttfb']=(ud[k][0],k)
+                    self.stat['url']['max_ttfb']=(ud[k][0], k)
                 if ud[k][1] < self.stat['url']['min_ttlb'][0]:
-                    self.stat['url']['min_ttlb']=(ud[k][1],k)
+                    self.stat['url']['min_ttlb']=(ud[k][1], k)
                 if ud[k][1] > self.stat['url']['max_ttlb'][0]:
-                    self.stat['url']['max_ttlb']=(ud[k][1],k)
+                    self.stat['url']['max_ttlb']=(ud[k][1], k)
 
         # get requests per second
-        self.stat['rps']=self.concurrency/self.stat['ttlb']['avg']
+        self.stat['rps']=req_count/( STOP_TIME-START_TIME )
 
         return self.stat
 
@@ -417,7 +426,6 @@ class DataManager(object):
             self.gp.xlabel("requests")
             self.gp.ylabel("response time (seconds)")
             self.gp.replot(self.ttfb_plot, self.ttlb_plot)
-
 
 
 def pw_getopts():
@@ -436,56 +444,56 @@ def pw_getopts():
             type="string",
             default=None,
             help="Server to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
-    
+
     parser.add_option("-u", "--urls",
             action="store",
             dest="urls_file",
             type="string",
             default=False,
             help="File with url's to test. This file must be directly an access.log file from nginx or apache.'")
-    
+
     parser.add_option("-c", "--concurrency",
             action="store",
             dest="concurrency",
             type="int",
             default=False,
             help="Number of concurrent requests")
-    
+
     parser.add_option("-n", "--number-of-requests",
             action="store",
             dest="total_requests",
             type="int",
             default=False,
             help="Number of requests to send to the host.")
-    
+
     parser.add_option("-m", "--mode",
             action="store",
             dest="mode",
             type="string",
             default='random',
             help="Mode can be 'random' or 'sequence'. It defines how the urls will be chosen from the url's file.")
-    
+
     parser.add_option("-R", "--replace-parameter",
             action="append",
             dest="replace_parameter",
             type="string",
             default=[],
             help="Replace parameter on the URLs that have such parameter: p.e.: 'user=hackme' will set the parameter 'user' to 'hackme' on all url that have the 'user' parameter. Can be called several times to make multiple replacements.")
-    
+
     parser.add_option("-A", "--auth",
             action="store",
             dest="auth_rule",
             type="string",
             default=None,
             help="Adds rule for form authentication with cookies. Syntax: 'METHOD::URL[::param1=value1[::param2=value2]...]'. For example: 'POST::http://example.com/login.py::user=root::pass=hackme'. NOTE: Use full url with protocol as in the example.")
-    
+
     parser.add_option("-H", "--http-version",
             action="store",
             dest="http_version",
             type="int",
             default='11',
             help="Defines which protocol version to use. Use '11' for HTTP 1.1 and '10' for HTTP 1.0")
-    
+
     parser.add_option("-l", "--live",
             action="store_true",
             dest="dynamic_plot",
@@ -504,7 +512,8 @@ def pw_getopts():
         parser.error('Number of requests not given (-n)')
 
     return opts
-    
+
+
 def pw_main( opts ):
     # Set parameters
     urls_file=opts.urls_file
@@ -520,15 +529,15 @@ def pw_main( opts ):
     test_id=opts.test_id
 
     # Create needed instances
-    up = UrlProvider(urls_file,mode, total_requests, replace_parameter_list=replace_parameter)
-    dm = DataManager(total_requests, concurrency, http_version)
+    up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
+    dm = DataManager(total_requests, concurrency, http_version, x11=dynamic_plot)
 
     # Create threads for concurrency
     ts = []
     for t in xrange(concurrency):
         # Using a connection pool per thread seems to be faster
         cp = get_connection_pool( host, http_version, auth_rule )
-        ts.append( WebClient(up,dm,cp))
+        ts.append( WebClient(up, dm, cp) )
 
     # Start Threads
     # Aquire read lock so we ensure all threads start the benchmark
@@ -539,25 +548,29 @@ def pw_main( opts ):
         t.n=i
         i+=1
         t.start()
+    global START_TIME
+    START_TIME=time.time()
     R_LOCK.release()
-
 
     print "\n Requests: %d\t\tConcurrency: %d\n" % (total_requests, ts.__len__())
     # bs: progress bar size
     bs=50
-   
+
     # Main loop with progress bar and plotting
     time.sleep(1)
     while up.requests_number > 0:
         per=(up.requests_number*bs)/total_requests
-        print '[%s%s] ' % ('='*(bs-per),' '*per),
+        print '[%s%s] ' % ('='*(bs-per), ' '*per),
         sys.stdout.flush()
         time.sleep(0.5)
         print '\r',
         sys.stdout.flush()
-        if dynamic_plot: dm.replot()
+        if dynamic_plot:
+            dm.replot()
     print '[%s] ' % ('='*bs)
     sys.stdout.flush()
+    global STOP_TIME
+    STOP_TIME=time.time()
 
     # Stopping threads
     print ""
@@ -576,7 +589,6 @@ def pw_main( opts ):
     print "DONE"
     sys.stdout.flush()
 
-
     print "\nCompiling stats...",
     sys.stdout.flush()
     stats = dm.stats()
@@ -585,8 +597,8 @@ def pw_main( opts ):
 
     print '\nStats (seconds)\n'
     print '\t\tmin\t\tavg\t\tmax'
-    print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'],stats['ttfb']['avg'],stats['ttfb']['max'])
-    print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'],stats['ttlb']['avg'],stats['ttlb']['max'])
+    print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'], stats['ttfb']['avg'], stats['ttfb']['max'])
+    print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'], stats['ttlb']['avg'], stats['ttlb']['max'])
     print '\n'
     print 'Requests per second: %.3f' % stats['rps']
     print '\n'
@@ -607,12 +619,11 @@ def pw_main( opts ):
             print '\tURL fail: ',
         print '%5d requests (%5.2f%%)' % (stats['code'][c], 100*float(stats['code'][c])/total_requests)
 
-
     if dynamic_plot:
         print '\nPress ENTER to save data and exit.'
         sys.stdout.flush()
         sys.stdin.readline()
-    
+
     dm.gp.reset()
     dm.gp.title('Requests: %d   User concurrency: %d   HTTP %.1f ' % (total_requests, concurrency, http_version/10.))
     dm.gp('set grid y')
@@ -621,20 +632,20 @@ def pw_main( opts ):
     dm.gp.xlabel("requests")
     dm.gp.ylabel("response time (seconds)")
     dm.replot()
-   
+
     # Saving information
     if test_id:
-        file_prefix='%s_%s_r%d_c%d_http%d' %(test_id,host.split('://')[1],total_requests,concurrency,http_version)
+        file_prefix='%s_%s_r%d_c%d_http%d' %(test_id, host.split('://')[1], total_requests, concurrency, http_version)
     else:
-        file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1],total_requests,concurrency,http_version)
+        file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1], total_requests, concurrency, http_version)
 
     dm.save( file_prefix )
-    
+
 
 if __name__ == '__main__':
     try:
         opts = pw_getopts()
         pw_main( opts )
     except PywenchException as e:
-        print 'Error:',e.__str__()
+        print 'Error:', e.__str__()
         sys.exit(1)
