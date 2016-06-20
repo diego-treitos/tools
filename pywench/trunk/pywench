@@ -91,9 +91,9 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
 
 def print_debug( msg, new_line=True):
     if new_line:
-        print msg
+        print(msg)
     else:
-        print msg,
+        print(msg, end='')
     sys.stdout.flush()
 
 
@@ -119,9 +119,9 @@ class WebClient(Thread):
         self.n=None
 
     def stop(self):
-        if self.__stop == False:
+        if not self.__stop:
             self.__stop=True
-        
+
     def get_times(self, _url):
         try:
             start = time.time()
@@ -157,7 +157,7 @@ class WebClient(Thread):
                     'code': code,
                     'ttfb': ttfb,
                     'ttlb': ttlb
-                    }
+            }
 
     def run(self):
         if self.debug: print_debug('%d: starting thread...' % self.n)
@@ -282,8 +282,6 @@ class DataManager(object):
         self.gp = None
         self.stat = None
 
-
-
     def add_data(self, d):
         self.data[d['time']] = d
         self.ttfb_graph.append( [self.ttfb_graph.__len__()+1, d['ttfb']] )
@@ -299,14 +297,14 @@ class DataManager(object):
                 self.gp('set terminal x11 position "0,0"')
 
     def save(self, filenames_prefix='output'):
-        f = file(filenames_prefix+'.csv','w')
+        f = file(filenames_prefix+'.csv', 'w')
         dkeys = self.data.keys()
         dkeys.sort()
         f.write('time\t\turl\t\tttfb\t\tttlb\n')
         for k in dkeys:
-            f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'],self.data[k]['url'],self.data[k]['ttfb'],self.data[k]['ttlb']))
+            f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'], self.data[k]['url'], self.data[k]['ttfb'], self.data[k]['ttlb']))
         f.close()
-        f = file(filenames_prefix+'.stat','w')
+        f = file(filenames_prefix+'.stat', 'w')
         pprint.pprint(self.stat, stream=f)
         f.close()
 
@@ -315,30 +313,29 @@ class DataManager(object):
         self.gp.close()
         self.gp.__del__()
 
-
     def stats(self):
         self.stat={
-                'ttfb':{
-                    'min':None,
-                    'avg':None,
-                    'max':None
-                    },
-                'ttlb':{
-                    'min':None,
-                    'avg':None,
-                    'max':None
-                    },
-                'url':{
-                    'min_ttfb':None,
-                    'max_ttfb':None,
-                    'min_ttlb':None,
-                    'max_ttlb':None
-                    },
-                'code':{
-                    },
-                'rps':None
-                }
-       
+                'ttfb': {
+                    'min': None,
+                    'avg': None,
+                    'max': None
+                },
+                'ttlb': {
+                    'min': None,
+                    'avg': None,
+                    'max': None
+                },
+                'url': {
+                    'min_ttfb': None,
+                    'max_ttfb': None,
+                    'min_ttlb': None,
+                    'max_ttlb': None
+                },
+                'code': {
+                },
+                'rps': None
+        }
+
         # Stats for TTFB and TTLB
         count=0
         for d in self.data:
@@ -447,56 +444,56 @@ def pw_getopts():
             type="string",
             default=None,
             help="Server to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
-    
+
     parser.add_option("-u", "--urls",
             action="store",
             dest="urls_file",
             type="string",
             default=False,
             help="File with url's to test. This file must be directly an access.log file from nginx or apache.'")
-    
+
     parser.add_option("-c", "--concurrency",
             action="store",
             dest="concurrency",
             type="int",
             default=False,
             help="Number of concurrent requests")
-    
+
     parser.add_option("-n", "--number-of-requests",
             action="store",
             dest="total_requests",
             type="int",
             default=False,
             help="Number of requests to send to the host.")
-    
+
     parser.add_option("-m", "--mode",
             action="store",
             dest="mode",
             type="string",
             default='random',
             help="Mode can be 'random' or 'sequence'. It defines how the urls will be chosen from the url's file.")
-    
+
     parser.add_option("-R", "--replace-parameter",
             action="append",
             dest="replace_parameter",
             type="string",
             default=[],
             help="Replace parameter on the URLs that have such parameter: p.e.: 'user=hackme' will set the parameter 'user' to 'hackme' on all url that have the 'user' parameter. Can be called several times to make multiple replacements.")
-    
+
     parser.add_option("-A", "--auth",
             action="store",
             dest="auth_rule",
             type="string",
             default=None,
             help="Adds rule for form authentication with cookies. Syntax: 'METHOD::URL[::param1=value1[::param2=value2]...]'. For example: 'POST::http://example.com/login.py::user=root::pass=hackme'. NOTE: Use full url with protocol as in the example.")
-    
+
     parser.add_option("-H", "--http-version",
             action="store",
             dest="http_version",
             type="int",
             default='11',
             help="Defines which protocol version to use. Use '11' for HTTP 1.1 and '10' for HTTP 1.0")
-    
+
     parser.add_option("-l", "--live",
             action="store_true",
             dest="dynamic_plot",
@@ -568,7 +565,8 @@ def pw_main( opts ):
         time.sleep(0.5)
         print '\r',
         sys.stdout.flush()
-        if dynamic_plot: dm.replot()
+        if dynamic_plot:
+            dm.replot()
     print '[%s] ' % ('='*bs)
     sys.stdout.flush()
     global STOP_TIME
@@ -591,7 +589,6 @@ def pw_main( opts ):
     print "DONE"
     sys.stdout.flush()
 
-
     print "\nCompiling stats...",
     sys.stdout.flush()
     stats = dm.stats()
@@ -600,8 +597,8 @@ def pw_main( opts ):
 
     print '\nStats (seconds)\n'
     print '\t\tmin\t\tavg\t\tmax'
-    print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'],stats['ttfb']['avg'],stats['ttfb']['max'])
-    print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'],stats['ttlb']['avg'],stats['ttlb']['max'])
+    print 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttfb']['min'], stats['ttfb']['avg'], stats['ttfb']['max'])
+    print 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f' % (stats['ttlb']['min'], stats['ttlb']['avg'], stats['ttlb']['max'])
     print '\n'
     print 'Requests per second: %.3f' % stats['rps']
     print '\n'
@@ -622,12 +619,11 @@ def pw_main( opts ):
             print '\tURL fail: ',
         print '%5d requests (%5.2f%%)' % (stats['code'][c], 100*float(stats['code'][c])/total_requests)
 
-
     if dynamic_plot:
         print '\nPress ENTER to save data and exit.'
         sys.stdout.flush()
         sys.stdin.readline()
-    
+
     dm.gp.reset()
     dm.gp.title('Requests: %d   User concurrency: %d   HTTP %.1f ' % (total_requests, concurrency, http_version/10.))
     dm.gp('set grid y')
@@ -636,12 +632,12 @@ def pw_main( opts ):
     dm.gp.xlabel("requests")
     dm.gp.ylabel("response time (seconds)")
     dm.replot()
-   
+
     # Saving information
     if test_id:
-        file_prefix='%s_%s_r%d_c%d_http%d' %(test_id,host.split('://')[1],total_requests,concurrency,http_version)
+        file_prefix='%s_%s_r%d_c%d_http%d' %(test_id, host.split('://')[1], total_requests, concurrency, http_version)
     else:
-        file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1],total_requests,concurrency,http_version)
+        file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1], total_requests, concurrency, http_version)
 
     dm.save( file_prefix )
 
