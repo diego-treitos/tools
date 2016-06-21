@@ -20,11 +20,10 @@
 import urllib3
 import httplib
 import time
-
 from multiprocessing import Process, Event, Queue, Manager
-
 from random import Random
-import Gnuplot
+import matplotlib.pyplot as plt
+import numpy as np
 import sys
 import os
 import pprint
@@ -233,35 +232,24 @@ class UrlProvider(object):
 
 class DataManager(object):
 
-    def __init__(self, total_requests, concurrency, http_version, x11=False):
+    def __init__(self, total_requests, concurrency, http_version):
         self.data = {}
 
         self.total_requests = total_requests
         self.concurrency = concurrency
         self.http_version = http_version
-        self.x11 = x11
 
-        self.ttfb_graph = []
-        self.ttlb_graph = []
-        self.ttfb_plot = None
-        self.ttlb_plot = None
-        self.gp = None
+        self.plot_ttfb_data = []
+        self.plot_ttlb_data = []
+        self.plot_time_data = []
         self.stat = None
         self.output = ''
 
     def add_data(self, d):
         self.data[d['time']] = d
-        self.ttfb_graph.append( [self.ttfb_graph.__len__()+1, d['ttfb']] )
-        self.ttlb_graph.append( [self.ttlb_graph.__len__()+1, d['ttlb']] )
-        if not self.gp:
-            # Initialize gnuplot
-            self.gp = Gnuplot.Gnuplot()
-            # Uncomment and comment x11 lines for ascii art
-            #self.gp('set terminal dumb 144 69')
-            if self.x11:
-                self.gp('set terminal x11 noraise nopersist')
-                self.gp('set terminal x11 size "800,600"')
-                self.gp('set terminal x11 position "0,0"')
+        self.plot_ttfb_data.append( d['ttfb'] )
+        self.plot_ttlb_data.append( d['ttlb'] )
+        self.plot_time_data.append( d['time'] - START_TIME )
 
     def save(self, filenames_prefix='output'):
         f = file(filenames_prefix+'.csv', 'w')
@@ -280,9 +268,7 @@ class DataManager(object):
         f.close()
 
         self.replot()
-        self.gp.hardcopy(filename=filenames_prefix+'.png', terminal='png')
-        self.gp.close()
-        self.gp.__del__()
+        plt.savefig('%s.png' % filenames_prefix, dpi=300)
 
     def compile_stats(self):
         self.stat={
@@ -412,17 +398,16 @@ class DataManager(object):
         print self.output
 
     def replot(self):
-        if self.gp:
-            self.ttfb_plot = Gnuplot.PlotItems.Data(self.ttfb_graph, with_="lines lt rgb '#7733aa44' lw 1", smooth='unique', title="ttfb")
-            self.ttlb_plot = Gnuplot.PlotItems.Data(self.ttlb_graph, with_="lines lt rgb '#773344aa' lw 1", smooth='unique', title="ttlb")
-            self.gp.reset()
-            self.gp.title('Requests: %d   User concurrency: %d   HTTP %.1f ' % (self.total_requests, self.concurrency, self.http_version/10.))
-            self.gp('set grid y')
-            self.gp('set ytics mirror autofreq')
-            self.gp('set ytics font ",10.0"')
-            self.gp.xlabel("requests")
-            self.gp.ylabel("response time (seconds)")
-            self.gp.replot(self.ttfb_plot, self.ttlb_plot)
+        order = np.argsort( self.plot_time_data )
+        xs = np.array( self.plot_time_data )[order]
+        ttfb_ys = np.array( self.plot_ttfb_data )[order]
+        ttlb_ys = np.array( self.plot_ttlb_data )[order]
+
+        plt.title('Requests: %d   User concurrency: %d   HTTP %.1f' % (self.total_requests, self.concurrency, self.http_version/10.), loc='right')
+        plt.xlabel('benchmark time (s)')
+        plt.ylabel('request time (s)')
+        plt.plot( xs, ttfb_ys, color="green", linewidth=1.0, linestyle="-", label="ttfb" )
+        plt.plot( xs, ttlb_ys,  color="blue", linewidth=1.0, linestyle="-", label="ttlb" )
 
 
 def pw_getopts():
@@ -495,7 +480,7 @@ def pw_getopts():
             action="store_true",
             dest="dynamic_plot",
             default=False,
-            help="If you enable this flag, you'll be able to see the realtime plot of the benchmark")
+            help="If you enable this flag, you'll be able to examine live the plot of the benchmark at the end of the benchmark")
 
     (opts, args) = parser.parse_args()
 
@@ -529,12 +514,12 @@ def pw_main( opts ):
 
     # Create needed instances
     up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
-    dm = DataManager(total_requests, concurrency, http_version, x11=dynamic_plot)
+    dm = DataManager(total_requests, concurrency, http_version)
     pm = Manager()
     raw_data = pm.list()
     event = Event()
 
-    # Create threads for concurrency
+    # Create processes for concurrency
     ps = []
     for p in xrange(concurrency):
         p = Process(
@@ -552,8 +537,8 @@ def pw_main( opts ):
         )
         ps.append( p )
 
-    # Start Threads
-    # Aquire read lock so we ensure all threads start the benchmark
+    # Start processes
+    # Set event so we ensure all threads start the benchmark
     # at the same time.
     for p in ps:
         p.start()
@@ -567,22 +552,24 @@ def pw_main( opts ):
 
     # Main loop with progress bar and plotting
     time.sleep(1)
+    last_qsize = up.queue.qsize()
     while not up.queue.empty():
-        per=(up.queue.qsize()*bs)/total_requests
-        print '[%s%s] ' % ('='*(bs-per), ' '*per),
+        qsize = up.queue.qsize()
+        per=(qsize*bs)/total_requests
+        print '[%s%s] %d rps      ' % ('='*(bs-per), ' '*per, (last_qsize-qsize)*2),
         sys.stdout.flush()
         time.sleep(0.5)
+        last_qsize = qsize
         print '\r',
         sys.stdout.flush()
-    print '%s  \n' % (' '*bs),
+    print '%s              \n' % (' '*bs),
     sys.stdout.flush()
     global STOP_TIME
     STOP_TIME=time.time()
 
-    # Stopping threads
+    # Wait for all proceses to stop
     print 'Stopping...',
     sys.stdout.flush()
-    # Then wait for all threads to stop
     for p in ps:
         p.join()
 
@@ -596,20 +583,6 @@ def pw_main( opts ):
     sys.stdout.flush()
     dm.print_stats()
 
-    if dynamic_plot:
-        print '\nPress ENTER to save data and exit. '
-        sys.stdout.flush()
-        sys.stdin.readline()
-
-    dm.gp.reset()
-    dm.gp.title('Requests: %d   User concurrency: %d   HTTP %.1f ' % (total_requests, concurrency, http_version/10.))
-    dm.gp('set grid y')
-    dm.gp('set ytics mirror 0,1,5')
-    dm.gp('set ytics add (0.1)(0.2)(0.3)(0.4)(0.5)(0.6)(0.7)(0.8)(0.9) font ",8.0"')
-    dm.gp.xlabel("requests")
-    dm.gp.ylabel("response time (seconds)")
-    dm.replot()
-
     # Saving information
     if test_id:
         file_prefix='%s_%s_r%d_c%d_http%d' %(test_id, host.split('://')[1], total_requests, concurrency, http_version)
@@ -617,6 +590,10 @@ def pw_main( opts ):
         file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1], total_requests, concurrency, http_version)
 
     dm.save( file_prefix )
+
+    if dynamic_plot:
+        dm.replot()
+        plt.show()
 
 
 if __name__ == '__main__':
