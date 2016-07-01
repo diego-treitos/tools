@@ -22,10 +22,13 @@ import httplib
 import time
 from multiprocessing import Process, Event, Queue, Manager
 from random import Random
-import matplotlib.pyplot as plt
-import numpy as np
 import sys
 import os
+if not os.getenv('DISPLAY'):
+    import matplotlib as mpl
+    mpl.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
 import pprint
 from optparse import OptionParser
 
