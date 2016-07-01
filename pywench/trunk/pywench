@@ -411,6 +411,7 @@ class DataManager(object):
         plt.ylabel('request time (s)')
         plt.plot( xs, ttfb_ys, color="green", linewidth=1.0, linestyle="-", label="ttfb" )
         plt.plot( xs, ttlb_ys,  color="blue", linewidth=1.0, linestyle="-", label="ttlb" )
+        plt.legend()
 
 
 def pw_getopts():
@@ -559,11 +560,10 @@ def pw_main( opts ):
     while not up.queue.empty():
         qsize = up.queue.qsize()
         per=(qsize*bs)/total_requests
-        print '[%s%s] %d rps      ' % ('='*(bs-per), ' '*per, (last_qsize-qsize)*2),
+        print ' [%s%s] %d rps\r' % ('='*(bs-per), ' '*per, (last_qsize-qsize)*2),
         sys.stdout.flush()
         time.sleep(0.5)
         last_qsize = qsize
-        print '\r',
         sys.stdout.flush()
     print '%s              \n' % (' '*bs),
     sys.stdout.flush()
