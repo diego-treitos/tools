@@ -1,0 +1,433 @@
+#!/bin/bash
+#
+#  dIb_compress_images. Image compression tool for web environments.
+#  Copyright (C) 2014  Diego Blanco <diego.blanco@treitos.com>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, version 2 of the License.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+grey='\033[30;01m'
+red='\033[31;01m'
+green='\033[32;01m'
+yellow='\033[33;01m'
+orange='\033[33;03m'
+blue='\033[34;01m'
+pink='\033[35;01m'
+cyan='\033[36;01m'
+purple='\033[35;00m'
+magenta='\033[22;36m'
+white='\033[37;01m'
+black='\033[30;02m'
+reset='\033[0;0m'
+
+bkp_ext="dIb_ic_bkp"
+
+options="-r -j -p -g -c -t -q -L -h --help"
+
+o_revert=false
+o_jpg=false
+o_png=false
+o_gif=false
+o_continue=false
+o_lossless=false
+o_quiet=false
+o_threshold=0
+o_img_path="$PWD"
+
+g_total_original_size=0
+g_total_compressed_size=0
+
+###( PARSEADOR DE OPCIONS
+last_opt=""
+for opt in $*;do
+    case $opt in
+        -r)
+            o_revert=true
+            last_opt="-r"
+            shift
+            ;;
+        -j)
+            o_jpg=true
+            last_opt="-j"
+            shift
+            ;;
+        -p)
+            o_png=true
+            last_opt="-p"
+            shift
+            ;;
+        -g)
+            o_gif=true
+            last_opt="-g"
+            shift
+            ;;
+        -c)
+            o_continue=true
+            last_opt="-c"
+            shift
+            ;;
+        -q)
+            o_quiet=true
+            last_opt="-q"
+            shift
+            ;;
+        -L)
+            o_lossless=true
+            last_opt="-L"
+            shift
+            ;;
+        -t)
+            last_opt="-t"
+            shift
+            ;;
+        -h|--help)
+            echo " Use: $0 <options> <path>"
+            echo 
+            echo "   Options:"
+            echo "      -r              Revert. Replace all processed images with their"
+            echo "                      backups."
+            echo "      -j              Compress JPEG files."
+            echo "      -p              Compress PNG files."
+            echo "      -g              Compress GIF files."
+            echo "      -L              Use lossless compression."
+            echo "      -q              Quiet mode."
+            echo "      -c              Continue an already started compression. This will"
+            echo "                      convert only not already backuped files."
+            echo "      -t <percentage> Only use the converted file if the compression"
+            echo "                      saves more than <percentage> size. The files not"
+            echo "                      below <percentage> will appear as 0% in output."
+            echo
+            echo " NOTE: If none of -j, -p or -g are specified all of them (-j -p -g)"
+            echo "       will be used."
+            exit 0
+            ;;
+        *)
+            if [ "$last_opt" == "-t" ];then
+                o_threshold="$1"
+            else
+                o_img_path="$1"
+                if [ ! -e "$o_img_path" ];then
+                    echo " $o_img_path: No such file or directory."
+                    exit 1
+                fi
+            fi
+            last_opt=""
+            shift
+            ;;
+    esac
+done
+###) PARSEADOR DE OPCIONS
+
+
+###( FUNCIONS
+fala() {
+    if ! $o_quiet ; then
+        echo -e $*
+    fi
+}
+
+align_right() {
+        msg_total_size="101"
+        msg="$1"
+        fala -n " $msg"
+        i=${#msg}
+
+        # force size
+        [ -z $2 ] || i=$(($2))
+
+        while [ $i -lt $((msg_total_size)) ]
+        do
+                fala -n "."
+                i=$((i+1))
+        done
+        fala -n "$reset"
+}
+
+check_dependencies() {
+    ok=true
+    if $o_jpg; then
+        if ! which jpegoptim > /dev/null;then
+            ok=false
+            echo
+            echo -e "${red} ERROR: ${white}Jpegoptim is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install jpegoptim"
+            echo -e "        RHEL/CentOS: On your own..."
+            echo
+        fi
+    fi
+    if $o_gif; then
+        if ! which gifsicle > /dev/null;then
+            ok=false
+            echo
+            echo -e "${red} ERROR: ${white}Gifsicle is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install gifsicle"
+            echo -e "        RHEL/CentOS: On your own..."
+            echo
+        fi
+    fi
+    if $o_png; then
+        if ! which pngquant > /dev/null;then
+            ok=false
+            echo
+            echo -e "${red} ERROR: ${white}Pngquant is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install pngquant"
+            echo -e "        RHEL/CentOS: sudo yum install -y epel-release pngquant"
+            echo
+        fi
+        if ! which pngcrush > /dev/null;then
+            ok=false
+            echo
+            echo -e "${red} ERROR: ${white}Pngcrush is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install pngcrush"
+            echo -e "        RHEL/CentOS: On your own..."
+            echo
+        fi
+    fi
+    $ok || exit 1
+}
+
+
+get_files_of_type() {
+    case $1 in
+        jpeg)
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.(jpeg|jpg)$' -type f 
+            return $?
+            ;;
+        png)
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.(png)$' -type f
+            return $?
+            ;;
+        gif)
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.(gif)$' -type f
+            return $?
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+}
+
+get_stats_of_type() {
+    f_type="$1"
+    avg_comp_perc="$2"
+
+    [ $((avg_comp_perc)) -gt 5 ] && comp_perc_color="$reset$orange"
+    [ $((avg_comp_perc)) -gt 20 ] && comp_perc_color="$yellow"
+    [ $((avg_comp_perc)) -gt 50 ] && comp_perc_color="$green"
+    [ $((avg_comp_perc)) -lt 10 ] && avg_comp_perc="0$avg_comp_perc"
+    echo -e "${white}Average compression for $(echo $f_type | tr '[:lower:]' '[:upper:]')\t[${comp_perc_color} ${avg_comp_perc}% ${white}]${reset}"
+}
+
+get_generic_stats() {
+    echo -e "${white}\n  Total size for original images: ${yellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
+    echo -e "${white}Total size for compressed images: ${green}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
+    echo -e "${white}Your images are now using the ${cyan}$((($g_total_compressed_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
+}
+
+
+compress_image() {
+    bkp_file="$2"
+    img_file="$3"
+    case $1 in
+        jpeg)
+            cp "$bkp_file" "$img_file"
+            jpegoptim -s --all-progressive -m80 "$img_file" -q > /dev/null 2>&1
+            if [ "$?" != "0" ]; then
+                rm -f "$img_file"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        png)
+            pngquant --skip-if-larger -o "$img_file" --force --quality=70-80 "$bkp_file" > /dev/null 2>&1
+            return $?
+            ;;
+        gif)
+            gifsicle -O3 "$bkp_file" -o "$img_file" > /dev/null 2>&1
+            return $?
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+}
+
+
+compress_image_lossless() {
+    bkp_file="$2"
+    img_file="$3"
+    case $1 in
+        jpeg)
+            cp "$bkp_file" "$img_file"
+            jpegoptim -s --all-progressive "$img_file" -q > /dev/null 2>&1
+            if [ "$?" != "0" ]; then
+                rm -f "$img_file"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        png)
+            pngcrush -rem allb -fix -q "$bkp_file" "$img_file" > /dev/null 2>&1
+            return $?
+            ;;
+        gif)
+            gifsicle -O3 "$bkp_file" -o "$img_file" > /dev/null 2>&1
+            return $?
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+}
+
+
+
+check_img_compression() {
+    original_img="$1"
+    processed_img="$2"
+    
+    # Se a compresion fallou non habera copia de seguranza
+    [ ! -f "$original_img" ] && return 0
+
+    original_img_size="$(du -b $1 | cut -f 1)"
+    processed_img_size="$(du -b $2 | cut -f 1)"
+
+    # Se a imaxe ocupa 0 bytes, non calcular
+    [ "$original_img_size" == 0 ] && return 0
+
+    g_total_original_size=$(($g_total_original_size+$original_img_size))
+
+    perc=$((100-($processed_img_size*100/$original_img_size)))
+    if [ $((perc)) -lt $((o_threshold)) ]; then
+        mv "$original_img" "$processed_img"
+        return 0
+    else
+        g_total_compressed_size=$(($g_total_compressed_size+$processed_img_size))
+        return $perc
+    fi
+}
+
+revert_images() {
+    echo -e "${white}=="
+    echo -e "All images under${reset} $o_img_path ${white}will be restored."
+    echo -en "Do you want to continue? [y/N]:${reset} "
+    read ans
+    [ "$ans" != "y" ] && [ "$ans" != "Y" ] && [ "$ans" != "yes" ] && echo "Exiting" && return 0
+    echo -e "${white}=="
+    IFS=$'\r\n' GLOBIGNORE='*' ori_files="$(find "$o_img_path" -name "*.$bkp_ext" -type f )"
+    for ori_file in $ori_files; do
+        align_right "${white} Reverting ${reset}$(basename ${ori_file%%.$bkp_ext})${white} "
+        mv "$ori_file" "${ori_file%%.$bkp_ext}"
+        echo -e "${white}done.${reset}"
+    done
+}
+
+
+compress_images_of_type(){
+    img_type="$1"
+    fala "${white}=="
+    fala "=== ${reset}$(echo $img_type | tr '[:lower:]' '[:upper:]')${white} files ===" 
+    IFS=$'\r\n' GLOBIGNORE='*' image_files="$(get_files_of_type $img_type)"
+    n=0
+    img_sum_comp_perc=0
+    for img_file in $image_files
+    do
+        n=$((n+1))
+
+        align_right "${white} Compressing ${reset}$(basename $img_file)${white} "
+        bkp_file="${img_file}.${bkp_ext}"
+        
+        # So creamos a copia de seguranza se non existe,
+        # deste xeito conservamos sempre o orixinal
+        if [ -f "$bkp_file" ];then
+            $o_continue && fala "${white}[ ${reset}---${white} ]${reset}" && continue
+        else
+            mv "$img_file" "$bkp_file"
+        fi
+
+        # Comprimimos a imaxe
+        if $o_lossless; then
+            compress_image_lossless "$img_type" "$bkp_file" "$img_file"
+        else
+            compress_image "$img_type" "$bkp_file" "$img_file"
+        fi
+        [ -f "$img_file" ] || mv "$bkp_file" "$img_file"
+
+        # Comprobamos se nos compre mantela e obtemos
+        # a porcentaxe de compresion
+        check_img_compression "$bkp_file" "$img_file"
+        comp_perc=$?
+        comp_perc_color="${red}"
+        img_sum_comp_perc=$(($img_sum_comp_perc + $comp_perc))      
+
+        [ $((comp_perc)) -gt 5 ] && comp_perc_color="$reset$orange"
+        [ $((comp_perc)) -gt 20 ] && comp_perc_color="$yellow"
+        [ $((comp_perc)) -gt 50 ] && comp_perc_color="$green"
+        [ $((comp_perc)) -lt 10 ] && comp_perc="0$comp_perc"
+        fala "${white}[${comp_perc_color} ${comp_perc}% ${white}]${reset}"
+    done
+    [ "$n" == 0 ] && return 0
+    return "$((img_sum_comp_perc/n))"
+}
+
+grazas() {
+    fala "\nAll the merit goes to these fantastic tools!"
+    fala "${green}  jpegoptim   ${cyan}Timo Kokkonen       ${white}https://www.kokkonen.net/tjko/projects.html"
+    fala "${green}  pngquant    ${cyan}Kornel Lesiński     ${white}https://pngquant.org"
+    fala "${green}  pngcrush    ${cyan}Andrew Chilton      ${white}http://pngcrush.com"
+    fala "${green}  gifsicle    ${cyan}Eddie Kohler        ${white}https://www.lcdf.org/gifsicle"
+}
+###) FUNCIONS
+
+
+
+###( PRINCIPAL
+
+# Se ningunha opcion foi especificada, activamos todas
+if ! ( $o_jpg  || $o_png || $o_gif ) ;then
+    o_jpg=true
+    o_png=true
+    o_gif=true
+fi
+
+# Comprobar dependencias
+check_dependencies
+
+fala ""
+fala "${white}== Using ${reset}\"$o_img_path\"${white} as image files root directory =="
+
+# Revertir e sair
+if $o_revert ;then revert_images;exit $?;fi
+
+# Comprimir
+if $o_jpg ;then compress_images_of_type jpeg ; jpg_avg_comp_perc="$?";fi
+if $o_png ;then compress_images_of_type png  ; png_avg_comp_perc="$?";fi
+if $o_gif ;then compress_images_of_type gif  ; gif_avg_comp_perc="$?";fi
+
+fala ""
+fala "${white}=========== STATS ==========="
+fala ""
+
+if ! $o_quiet; then
+    if $o_jpg ;then get_stats_of_type jpeg "$jpg_avg_comp_perc";fi
+    if $o_png ;then get_stats_of_type png  "$png_avg_comp_perc";fi
+    if $o_gif ;then get_stats_of_type gif  "$gif_avg_comp_perc";fi
+    get_generic_stats
+fi
+
+grazas
+
+fala "${reset}"
+###) PRINCIPAL
