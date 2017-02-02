@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #  dIb_compress_images. Image compression tool for web environments.
-#  Copyright (C) 2014  Diego Blanco <diego.blanco@treitos.com>
+#  Copyright (C) 2014  Diego Blanco
 #
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -200,15 +200,15 @@ check_dependencies() {
 get_files_of_type() {
     case $1 in
         jpeg)
-            find "$o_img_path" -regextype posix-egrep -regex '.*\.(jpeg|jpg)$' -type f 
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.[Jj][Pp][Ee]?[Gg]$' -type f 
             return $?
             ;;
         png)
-            find "$o_img_path" -regextype posix-egrep -regex '.*\.(png)$' -type f
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.[Pp][Nn][Gg]$' -type f
             return $?
             ;;
         gif)
-            find "$o_img_path" -regextype posix-egrep -regex '.*\.(gif)$' -type f
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.[Gg][Ii][Ff]$' -type f
             return $?
             ;;
         *)
