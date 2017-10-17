@@ -32,6 +32,7 @@ import numpy as np
 import pprint
 from optparse import OptionParser
 
+urllib3.disable_warnings( urllib3.exceptions.InsecureRequestWarning )
 
 DEBUG=False
 SOCKET_TIMEOUT=90
