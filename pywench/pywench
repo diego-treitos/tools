@@ -287,24 +287,24 @@ class DataManager(object):
     def compile_stats(self):
         self.stat={
                 'ttfb': {
-                    'min': None,
-                    'avg': None,
-                    'max': None
+                    'min': 0.0,
+                    'avg': 0.0,
+                    'max': 0.0 
                 },
                 'ttlb': {
-                    'min': None,
-                    'avg': None,
-                    'max': None
+                    'min': 0.0,
+                    'avg': 0.0,
+                    'max': 0.0 
                 },
                 'url': {
-                    'min_ttfb': None,
-                    'max_ttfb': None,
-                    'min_ttlb': None,
-                    'max_ttlb': None
+                    'min_ttfb': '',
+                    'max_ttfb': '',
+                    'min_ttlb': '',
+                    'max_ttlb': '' 
                 },
                 'code': {
                 },
-                'rps': None
+                'rps': 0
         }
 
         # Stats for TTFB and TTLB
@@ -322,7 +322,7 @@ class DataManager(object):
 
             count+=1
             # Init
-            if self.stat['ttfb']['min'] is None:
+            if self.stat['ttfb']['min'] is 0:
                 self.stat['ttfb']['min'] = self.data[d]['ttfb']
                 self.stat['ttfb']['avg'] = self.data[d]['ttfb']
                 self.stat['ttfb']['max'] = self.data[d]['ttfb']
