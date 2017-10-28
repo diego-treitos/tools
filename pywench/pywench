@@ -611,10 +611,9 @@ def pw_main( opts ):
   dm.print_stats()
 
   # Saving information
+  file_prefix='%s_r%d_c%d' %(host.split('://')[1], total_requests, concurrency)
   if test_id:
-    file_prefix='%s_%s_r%d_c%d_http%d' %(test_id, host.split('://')[1], total_requests, concurrency, http_version)
-  else:
-    file_prefix='%s_r%d_c%d_http%d' %(host.split('://')[1], total_requests, concurrency, http_version)
+    file_prefix='%s_%s' %(test_id, file_prefix)
 
   dm.save( file_prefix )
 
