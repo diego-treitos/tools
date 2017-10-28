@@ -46,6 +46,13 @@ DEFAULT_HEADERS={
 START_TIME=0
 STOP_TIME=0
 
+def print_debug( msg, new_line=True ):
+  if new_line:
+    print( msg )
+  else:
+    print( msg ),
+  sys.stdout.flush()
+
 
 def get_connection_pool( host, http_version=11, auth_rule=None, headers={} ):
   if http_version == 10:
@@ -103,22 +110,6 @@ def get_connection_pool( host, http_version=11, auth_rule=None, headers={} ):
   return cpool
 
 
-def print_debug( msg, new_line=True ):
-  if new_line:
-    print( msg )
-  else:
-    print( msg ),
-  sys.stdout.flush()
-
-
-class PywenchException( Exception ):
-  def __init__(self, msg):
-    self.val = msg
-
-  def __str__(self):
-    return repr( self.val )
-
-
 def request_worker( event, connection_variables, urls, data):
   """
   event : multiprocessing.Event
@@ -172,6 +163,14 @@ def request_worker( event, connection_variables, urls, data):
         'ttfb': ttfb,
         'ttlb': ttlb
       })
+
+
+class PywenchException( Exception ):
+  def __init__(self, msg):
+    self.val = msg
+
+  def __str__(self):
+    return repr( self.val )
 
 
 class UrlProvider( object ):
@@ -286,14 +285,14 @@ class DataManager(object):
   def compile_stats(self):
     self.stat={
       'ttfb': {
-          'min': 0.0,
-          'avg': 0.0,
-          'max': 0.0
+          'min': None,
+          'avg': None,
+          'max': None
       },
       'ttlb': {
-          'min': 0.0,
-          'avg': 0.0,
-          'max': 0.0
+          'min': None,
+          'avg': None,
+          'max': None
       },
       'url': {
           'min_ttfb': '',
@@ -321,7 +320,7 @@ class DataManager(object):
 
       count+=1
       # Init
-      if self.stat['ttfb']['min'] is 0:
+      if self.stat['ttfb']['min'] is None:
         self.stat['ttfb']['min'] = self.data[d]['ttfb']
         self.stat['ttfb']['avg'] = self.data[d]['ttfb']
         self.stat['ttfb']['max'] = self.data[d]['ttfb']
@@ -385,6 +384,8 @@ class DataManager(object):
     return self.stat
 
   def print_stats(self):
+    if self.stat['ttfb']['min'] is None:
+      raise PywenchException( 'All requests failed' )
     self.output+= 'Stats (seconds)\n\n'
     self.output+= '\t\tmin\t\tavg\t\tmax\n'
     self.output+= 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
@@ -627,5 +628,5 @@ if __name__ == '__main__':
     opts = pw_getopts()
     pw_main( opts )
   except PywenchException as e:
-    print( 'Error:', e.__str__() )
+    print( 'Error: %s' % e.__str__() )
     sys.exit(1)
