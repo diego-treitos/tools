@@ -30,18 +30,23 @@ if not os.getenv('DISPLAY'):
 import matplotlib.pyplot as plt
 import numpy as np
 import pprint
-from optparse import OptionParser
+from argparse import ArgumentParser
 
+# Disable warnings for invalid certificates
 urllib3.disable_warnings( urllib3.exceptions.InsecureRequestWarning )
+
 
 DEBUG=False
 SOCKET_TIMEOUT=90
+DEFAULT_HEADERS={
+    'Accept-Encoding': 'gzip, deflate'
+}
 
 START_TIME=0
 STOP_TIME=0
 
 
-def get_connection_pool( host, http_version=11, auth_rule=None ):
+def get_connection_pool( host, http_version=11, auth_rule=None, headers={} ):
     if http_version == 10:
         httplib.HTTPConnection._http_vsn = 10
         httplib.HTTPConnection._http_vsn_str = 'HTTP/1.0'
@@ -51,9 +56,7 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
     else:
         raise PywenchException('Bad HTTP version: %s' % repr(http_version))
 
-    if not auth_rule:
-        cpool = urllib3.connectionpool.connection_from_url(host)
-    else:
+    if auth_rule:
         try:
             auth = auth_rule.split('::')
             method=auth[0]
@@ -81,10 +84,12 @@ def get_connection_pool( host, http_version=11, auth_rule=None ):
             else:
                 raise PywenchException('Bad authentication rule syntax: Only POST or GET methods allowed.')
 
-            cpool = urllib3.connectionpool.connection_from_url(host, headers={'Cookie': cookie})
+            DEFAULT_HEADERS['Cookie'] = cookie
 
         except IndexError:
             raise PywenchException('Bad authentication rule syntax')
+
+    cpool = urllib3.connectionpool.connection_from_url(host, headers=DEFAULT_HEADERS)
 
     # Disable certificate verification for all connections
     cpool.cert_reqs = 'CERT_NONE'
@@ -416,78 +421,78 @@ class DataManager(object):
 
 
 def pw_getopts():
-    parser = OptionParser(usage="usage: %prog [options] -s SERVER -u URLS_FILE -c CONCURRENCY -n NUMBER_OF_REQUESTS")
+    parser = ArgumentParser(usage="usage: %(prog)s [options] -s SERVER -u URLS_FILE -c CONCURRENCY -n NUMBER_OF_REQUESTS")
 
-    parser.add_option("-i", "--test-id",
+    parser.add_argument("-i", "--test-id",
             action="store",
             dest="test_id",
-            type="string",
+            type=str,
             default=False,
             help="Identificator for the test. This name will be a suffix for the output files.")
 
-    parser.add_option("-s", "--server",
+    parser.add_argument("-s", "--server",
             action="store",
             dest="server",
-            type="string",
+            type=str,
             default=None,
             help="Server to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
 
-    parser.add_option("-u", "--urls",
+    parser.add_argument("-u", "--urls",
             action="store",
             dest="urls_file",
-            type="string",
+            type=str,
             default=False,
             help="File with url's to test. This file must be directly an access.log file from nginx or apache.'")
 
-    parser.add_option("-c", "--concurrency",
+    parser.add_argument("-c", "--concurrency",
             action="store",
             dest="concurrency",
-            type="int",
+            type=int,
             default=False,
             help="Number of concurrent requests")
 
-    parser.add_option("-n", "--number-of-requests",
+    parser.add_argument("-n", "--number-of-requests",
             action="store",
             dest="total_requests",
-            type="int",
+            type=int,
             default=False,
             help="Number of requests to send to the host.")
 
-    parser.add_option("-m", "--mode",
+    parser.add_argument("-m", "--mode",
             action="store",
             dest="mode",
-            type="string",
+            type=str,
             default='random',
             help="Mode can be 'random' or 'sequence'. It defines how the urls will be chosen from the url's file.")
 
-    parser.add_option("-R", "--replace-parameter",
+    parser.add_argument("-R", "--replace-parameter",
             action="append",
             dest="replace_parameter",
-            type="string",
+            type=str,
             default=[],
             help="Replace parameter on the URLs that have such parameter: p.e.: 'user=hackme' will set the parameter 'user' to 'hackme' on all url that have the 'user' parameter. Can be called several times to make multiple replacements.")
 
-    parser.add_option("-A", "--auth",
+    parser.add_argument("-A", "--auth",
             action="store",
             dest="auth_rule",
-            type="string",
+            type=str,
             default=None,
             help="Adds rule for form authentication with cookies. Syntax: 'METHOD::URL[::param1=value1[::param2=value2]...]'. For example: 'POST::http://example.com/login.py::user=root::pass=hackme'. NOTE: Use full url with protocol as in the example.")
 
-    parser.add_option("-H", "--http-version",
+    parser.add_argument("--http-version",
             action="store",
             dest="http_version",
-            type="int",
+            type=int,
             default='11',
             help="Defines which protocol version to use. Use '11' for HTTP 1.1 and '10' for HTTP 1.0")
 
-    parser.add_option("-l", "--live",
+    parser.add_argument("-l", "--live",
             action="store_true",
             dest="dynamic_plot",
             default=False,
             help="If you enable this flag, you'll be able to examine live the plot of the benchmark at the end of the benchmark")
 
-    (opts, args) = parser.parse_args()
+    opts = parser.parse_args()
 
     if not opts.server:
         parser.error('Missing server to test (-s)')
@@ -575,7 +580,8 @@ def pw_main( opts ):
     print 'Stopping...',
     sys.stdout.flush()
     for p in ps:
-        p.join()
+        p.join(1)
+        p.terminate()
 
     print "\rCompiling stats...",
     sys.stdout.flush()
