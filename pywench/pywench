@@ -89,6 +89,10 @@ def get_connection_pool( host, http_version=11, auth_rule=None, headers={} ):
         except IndexError:
             raise PywenchException('Bad authentication rule syntax')
 
+    if headers:
+        for h in headers:
+            DEFAULT_HEADERS[ h ] = headers[ h ]
+
     cpool = urllib3.connectionpool.connection_from_url(host, headers=DEFAULT_HEADERS)
 
     # Disable certificate verification for all connections
@@ -125,7 +129,8 @@ def request_worker( event, connection_variables, urls, data):
     cp = get_connection_pool(
         connection_variables['host'],
         connection_variables['http_version'],
-        connection_variables['auth_rule']
+        connection_variables['auth_rule'],
+        connection_variables['headers']
     )
 
     while not urls.empty():
@@ -486,6 +491,12 @@ def pw_getopts():
             default='11',
             help="Defines which protocol version to use. Use '11' for HTTP 1.1 and '10' for HTTP 1.0")
 
+    parser.add_argument("-H", "--add-header",
+            action="append",
+            dest="headers",
+            type=lambda kv: kv.split(":", 1),
+            help="Adds a header to the requests. It can be specified multiple times. For example: -H 'User-Agent: MyUserAgent'")
+
     parser.add_argument("-l", "--live",
             action="store_true",
             dest="dynamic_plot",
@@ -502,6 +513,11 @@ def pw_getopts():
         parser.error('Concurrency not given (-c)')
     if not opts.total_requests:
         parser.error('Number of requests not given (-n)')
+    try:
+        if opts.headers:
+            opts.headers = dict(opts.headers)
+    except Exception as e:
+        parser.error('Wrong header format (-H)')
 
     return opts
 
@@ -529,6 +545,7 @@ def pw_main( opts ):
     raw_data = pm.list()
     event = Event()
 
+
     # Create processes for concurrency
     ps = []
     for p in xrange(concurrency):
@@ -539,7 +556,8 @@ def pw_main( opts ):
                 {
                     'host': host,
                     'http_version': http_version,
-                    'auth_rule': auth_rule
+                    'auth_rule': auth_rule,
+                    'headers': opts.headers
                 },
                 up.queue,
                 raw_data
