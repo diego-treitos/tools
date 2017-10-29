@@ -161,7 +161,8 @@ def request_worker( event, connection_variables, urls, data):
         'url': _url,
         'code': code,
         'ttfb': ttfb,
-        'ttlb': ttlb
+        'ttlb': ttlb,
+        'bytes': r.tell()
       })
 
 
@@ -294,6 +295,11 @@ class DataManager(object):
           'avg': None,
           'max': None
       },
+      'mbps': {
+          'min': None,
+          'avg': None,
+          'max': None
+      },
       'url': {
           'min_ttfb': '',
           'max_ttfb': '',
@@ -318,6 +324,9 @@ class DataManager(object):
       if self.data[d]['code'] is None:
         continue
 
+      # Calculate bandwidth for this request in Mbps
+      mbps = ( self.data[d]['bytes'] * 8.0 / (self.data[d]['ttlb']-self.data[d]['ttfb']) ) / 1024**2
+
       count+=1
       # Init
       if self.stat['ttfb']['min'] is None:
@@ -327,22 +336,30 @@ class DataManager(object):
         self.stat['ttlb']['min'] = self.data[d]['ttlb']
         self.stat['ttlb']['avg'] = self.data[d]['ttlb']
         self.stat['ttlb']['max'] = self.data[d]['ttlb']
+        self.stat['mbps']['min'] = mbps
+        self.stat['mbps']['avg'] = mbps
+        self.stat['mbps']['max'] = mbps
       else:
         # Min
         if self.data[d]['ttfb'] < self.stat['ttfb']['min']:
           self.stat['ttfb']['min'] = self.data[d]['ttfb']
         if self.data[d]['ttlb'] < self.stat['ttlb']['min']:
           self.stat['ttlb']['min'] = self.data[d]['ttlb']
+        if mbps < self.stat['mbps']['min']:
+          self.stat['mbps']['min'] = mbps
 
         # Max
         if self.data[d]['ttfb'] > self.stat['ttfb']['max']:
           self.stat['ttfb']['max'] = self.data[d]['ttfb']
         if self.data[d]['ttlb'] > self.stat['ttlb']['max']:
           self.stat['ttlb']['max'] = self.data[d]['ttlb']
+        if mbps > self.stat['mbps']['max']:
+          self.stat['mbps']['max'] = mbps
 
         # Avg
         self.stat['ttfb']['avg'] = self.stat['ttfb']['avg'] + (self.data[d]['ttfb']-self.stat['ttfb']['avg'])/float(count)
         self.stat['ttlb']['avg'] = self.stat['ttlb']['avg'] + (self.data[d]['ttlb']-self.stat['ttlb']['avg'])/float(count)
+        self.stat['mbps']['avg'] = self.stat['mbps']['avg'] + (mbps-self.stat['mbps']['avg'])/float(count)
 
     req_count=count
 
@@ -390,6 +407,7 @@ class DataManager(object):
     self.output+= '\t\tmin\t\tavg\t\tmax\n'
     self.output+= 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
     self.output+= 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
+    self.output+= 'mbps\t\t%.3f\t\t%.3f\t\t%.3f\n' % (self.stat['mbps']['min'], self.stat['mbps']['avg'], self.stat['mbps']['max'])
     self.output+= '\n\n'
     self.output+= 'Requests per second: %.3f\n' % self.stat['rps']
     self.output+= '\n\n'
