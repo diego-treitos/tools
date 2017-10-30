@@ -601,7 +601,7 @@ def pw_main( opts ):
   while not up.queue.empty():
     qsize = up.queue.qsize()
     per=(qsize*bs)/total_requests
-    print( ' [%s%s] %d rps     \r' % ('='*(bs-per), ' '*per, (last_qsize-qsize)*2) ),
+    print( ' -%s.%s_ %d rps     \r' % ('-'*(bs-per-1), '_'*per, (last_qsize-qsize)*2) ),
     sys.stdout.flush()
     time.sleep(0.5)
     last_qsize = qsize
