@@ -219,7 +219,7 @@ class PyWenchAgent( object ):
 
 class UrlProvider( object ):
 
-  def __init__(self, urls_file_path, mode, requests_number, replace_parameter_list=[]):
+  def __init__(self, urls_file_path, mode, requests_number, replace_parameter_list=[], methods=['GET']):
     """mode = [random,squence]"""
 
     if mode.lower() not in ('random', 'sequence'):
@@ -229,6 +229,7 @@ class UrlProvider( object ):
     self.mode = mode.lower()
     self.replace_parameter_dict = {}
     self.__parse_replace_parameter( replace_parameter_list )
+    self.methods = methods
 
     try:
       self.queue = self.__filter_urls(urls_file_path)
@@ -245,43 +246,51 @@ class UrlProvider( object ):
     urls_to_use = Queue()
     r = Random()
 
-    lines = open(access_file).readlines()
-    for l in lines:
-      if l.find('GET') != -1:
-        urls.append(l.split()[6])
+    with open(access_file) as access_lines:
+      for line in access_lines:
+        fields = line.split()
+        for m in self.methods:
+          try:
+            u = fields[fields.index( m.upper() ) + 1]
+            urls.append( u )
+          finally:
+            break
 
     url_index = None
     n_urls = urls.__len__()
-    for i in range(0, self.requests_number):
-      if self.mode == 'random':
-        u = urls[ r.randint(0, n_urls-1) ]
-      elif self.mode == 'sequence':
-        # (Re)set the index
-        if url_index is None or url_index == n_urls-1:
-          url_index = -1
-        url_index+=1
-        u = urls[ url_index ]
+    if n_urls > 0:
+      for i in range(0, self.requests_number):
+        if self.mode == 'random':
+          u = urls[ r.randint(0, n_urls-1) ]
+        elif self.mode == 'sequence':
+          # (Re)set the index
+          if url_index is None or url_index == n_urls-1:
+            url_index = -1
+          url_index+=1
+          u = urls[ url_index ]
 
-      url = u.strip()
+        url = u.strip()
 
-      # If url is not a relative path, search for other url
-      if url[:7].lower() == "http://" or url[:8].lower() == "https://":
-        i+=1
-        continue
+        # If url is not a relative path, search for other url
+        if url[:7].lower() == "http://" or url[:8].lower() == "https://":
+          i+=1
+          continue
 
-      if self.replace_parameter_dict != {} and url.find('?') != -1:
-        [rawurl, rawp] = url.split('?')
-        params='?'
-        for p in rawp.split('&'):
-          [k, v]=p.split('=')
-          if k in self.replace_parameter_dict:
-            params+="%s=%s&" % (k, self.replace_parameter_dict[k])
-          else:
-            params+="%s=%s&" % (k, v)
-        # remove last &
-        params=params[:-1]
-        url = rawurl+params
-      urls_to_use.put( url )
+        if self.replace_parameter_dict != {} and url.find('?') != -1:
+          [rawurl, rawp] = url.split('?')
+          params='?'
+          for p in rawp.split('&'):
+            [k, v]=p.split('=')
+            if k in self.replace_parameter_dict:
+              params+="%s=%s&" % (k, self.replace_parameter_dict[k])
+            else:
+              params+="%s=%s&" % (k, v)
+          # remove last &
+          params=params[:-1]
+          url = rawurl+params
+        urls_to_use.put( url )
+    else:
+      raise PywenchException( 'No urls found for methods: %s' % repr( self.methods ) )
 
     return urls_to_use
 
@@ -564,6 +573,13 @@ def pw_getopts():
                       default=False,
                       help="If you enable this flag, you'll be able to examine live the plot of the benchmark at the end of the benchmark")
 
+  parser.add_argument("-M", "--methods",
+                      action="store",
+                      dest="methods",
+                      type=lambda v: [ item for item in v.split(',') ],
+                      default=['GET'],
+                      help="Comma separated list of methods to be looked for in the access log file. Default only GET requests are used. For example: 'GET,PUT,DELETE'")
+
   opts = parser.parse_args()
 
   if not opts.host:
@@ -588,7 +604,13 @@ def pw_main( opts ):
   sys.stdout.flush()
 
   # Create needed instances
-  up = UrlProvider( opts.urls_file, opts.mode, opts.total_requests, replace_parameter_list=opts.replace_parameter )
+  up = UrlProvider(
+    opts.urls_file,
+    opts.mode,
+    opts.total_requests,
+    replace_parameter_list=opts.replace_parameter,
+    methods = opts.methods
+  )
   dm = DataManager( opts.total_requests, opts.concurrency, opts.http_version )
   ag = PyWenchAgent( opts.host, opts.http_version, opts.auth_rule, opts.headers )
 
