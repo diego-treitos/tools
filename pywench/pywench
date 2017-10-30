@@ -29,10 +29,16 @@ import urllib3
 from argparse import ArgumentParser
 from multiprocessing import Process, Event, Queue, Manager
 from random import Random
-if not os.getenv('DISPLAY'):
-  import matplotlib as mpl
-  mpl.use('Agg')
-import matplotlib.pyplot as plt
+
+try:
+  if not os.getenv('DISPLAY'):
+    import matplotlib as mpl
+    mpl.use('Agg')
+  import matplotlib.pyplot as plt
+except ImportError:
+  print( '\nINFO: Could not import matplotlib. Graphs will not be generated\n' )
+  plt = None
+
 
 # Disable warnings for invalid certificates
 urllib3.disable_warnings( urllib3.exceptions.InsecureRequestWarning )
@@ -317,23 +323,22 @@ class DataManager( object ):
     self.plot_time_data.append( d['time'] - START_TIME )
 
   def save(self, filenames_prefix='output'):
-    f = open(filenames_prefix+'.csv', 'w')
-    dkeys = self.data.keys()
-    dkeys.sort()
-    f.write('time\t\turl\t\tttfb\t\tttlb\n')
-    for k in dkeys:
-      f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'], self.data[k]['url'], self.data[k]['ttfb'], self.data[k]['ttlb']))
-    f.close()
-    f = open(filenames_prefix+'.stat', 'w')
-    pprint.pprint(self.stat, stream=f)
-    f.close()
+    with open(filenames_prefix+'.csv', 'w') as f:
+      dkeys = self.data.keys()
+      dkeys.sort()
+      f.write('time\t\turl\t\tttfb\t\tttlb\n')
+      for k in dkeys:
+        f.write('%f\t\t%s\t\t%f\t\t%f\n' % ( self.data[k]['time'], self.data[k]['url'], self.data[k]['ttfb'], self.data[k]['ttlb']))
 
-    f = open(filenames_prefix+'.txt', 'w')
-    f.write(self.output)
-    f.close()
+    with open(filenames_prefix+'.stat', 'w') as f:
+      pprint.pprint(self.stat, stream=f)
 
-    self.replot()
-    plt.savefig('%s.png' % filenames_prefix, dpi=300)
+    with open(filenames_prefix+'.txt', 'w') as f:
+      f.write(self.output)
+
+    if plt:
+      self.replot()
+      plt.savefig('%s.png' % filenames_prefix, dpi=300)
 
   def compile_stats(self):
     self.stat={
@@ -455,18 +460,19 @@ class DataManager( object ):
   def print_stats(self):
     if self.stat['ttfb']['min'] is None:
       raise PywenchException( 'All requests failed' )
-    self.output+= 'Stats (seconds)\n\n'
-    self.output+= '\t\tmin\t\tavg\t\tmax\n'
-    self.output+= 'ttfb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
-    self.output+= 'ttlb\t\t%.5f\t\t%.5f\t\t%.5f\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
-    self.output+= 'mbps\t\t%.3f\t\t%.3f\t\t%.3f\n' % (self.stat['mbps']['min'], self.stat['mbps']['avg'], self.stat['mbps']['max'])
+    self.output+= 'Stats\n\n'
+    self.output+= '\tminimum\t\taverage\t\tmaximum\n'
+    self.output+= '\t-------\t\t-------\t\t-------\n'
+    self.output+= 'ttfb\t%.5f s\t%.5f s\t%.5f s\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
+    self.output+= 'ttlb\t%.5f s\t%.5f s\t%.5f s\n\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
+    self.output+= 'mbps\t%.3f Mbps\t%.3f Mbps\t%.3f Mbps\n' % (self.stat['mbps']['min'], self.stat['mbps']['avg'], self.stat['mbps']['max'])
     self.output+= '\n\n'
-    self.output+= 'Requests per second: %.3f\n' % self.stat['rps']
+    self.output+= 'Requests per second: %d rps\n' % self.stat['rps']
     self.output+= '\n\n'
-    self.output+= 'URL min ttfb: (%.5f) %s\n' % self.stat['url']['min_ttfb']
-    self.output+= 'URL max ttfb: (%.5f) %s\n' % self.stat['url']['max_ttfb']
-    self.output+= 'URL min ttlb: (%.5f) %s\n' % self.stat['url']['min_ttlb']
-    self.output+= 'URL max ttlb: (%.5f) %s\n' % self.stat['url']['max_ttlb']
+    self.output+= 'URL min ttfb: (%.5f s) %s\n' % self.stat['url']['min_ttfb']
+    self.output+= 'URL max ttfb: (%.5f s) %s\n' % self.stat['url']['max_ttfb']
+    self.output+= 'URL min ttlb: (%.5f s) %s\n' % self.stat['url']['min_ttlb']
+    self.output+= 'URL max ttlb: (%.5f s) %s\n' % self.stat['url']['max_ttlb']
     self.output+= 'NOTE: These stats are based on the average time (ttfb or ttlb) for each url.\n'
     self.output+= '\n\n'
     self.output+= 'Protocol stats:\n'
@@ -482,17 +488,18 @@ class DataManager( object ):
     print( self.output )
 
   def replot(self):
-    order = np.argsort( self.plot_time_data )
-    xs = np.array( self.plot_time_data )[order]
-    ttfb_ys = np.array( self.plot_ttfb_data )[order]
-    ttlb_ys = np.array( self.plot_ttlb_data )[order]
+    if plt:
+      order = np.argsort( self.plot_time_data )
+      xs = np.array( self.plot_time_data )[order]
+      ttfb_ys = np.array( self.plot_ttfb_data )[order]
+      ttlb_ys = np.array( self.plot_ttlb_data )[order]
 
-    plt.title('Requests: %d   User concurrency: %d   HTTP %.1f' % (self.total_requests, self.concurrency, self.http_version/10.), loc='right')
-    plt.xlabel('benchmark time (s)')
-    plt.ylabel('request time (s)')
-    plt.plot( xs, ttfb_ys, color="green", linewidth=1.0, linestyle="-", label="ttfb" )
-    plt.plot( xs, ttlb_ys, color="blue", linewidth=1.0, linestyle="-", label="ttlb" )
-    plt.legend()
+      plt.title('Requests: %d   User concurrency: %d   HTTP %.1f' % (self.total_requests, self.concurrency, self.http_version/10.), loc='right')
+      plt.xlabel('benchmark time (s)')
+      plt.ylabel('request time (s)')
+      plt.plot( xs, ttfb_ys, color="green", linewidth=1.0, linestyle="-", label="ttfb" )
+      plt.plot( xs, ttlb_ys, color="blue", linewidth=1.0, linestyle="-", label="ttlb" )
+      plt.legend()
 
 
 def pw_getopts():
@@ -640,7 +647,7 @@ def pw_main( opts ):
   while not up.queue.empty():
     qsize = up.queue.qsize()
     per=(qsize*bs)/opts.total_requests
-    print( ' -%s.%s_ %d rps     \r' % ('-'*(bs-per-1), '_'*per, (last_qsize-qsize)*2) ),
+    print( ' -%s.%s/ %d rps     \r' % ('-'*(bs-per-1), '_'*per, (last_qsize-qsize)*2) ),
     sys.stdout.flush()
     time.sleep(0.5)
     last_qsize = qsize
@@ -671,7 +678,7 @@ def pw_main( opts ):
 
   dm.save( file_prefix )
 
-  if opts.dynamic_plot:
+  if opts.dynamic_plot and plt:
     dm.replot()
     plt.show()
 
