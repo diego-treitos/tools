@@ -24,6 +24,7 @@ import os
 import pprint
 import sys
 import time
+import traceback
 import urllib3
 from argparse import ArgumentParser
 from multiprocessing import Process, Event, Queue, Manager
@@ -60,6 +61,32 @@ class PywenchException( Exception ):
 
   def __str__(self):
     return repr( self.val )
+
+
+class PyWenchManager( object ):
+
+  def __init__( self, concurrency ):
+    self.pl = []  # Process List
+    self.concurrency = concurrency
+
+  def start( self, target, args ):
+    try:
+      for p in range(self.concurrency):
+        p = Process( target=target, args=args )
+        self.pl.append( p )
+        p.start()
+
+    except KeyboardInterrupt as e:
+      print( 'KeyInt OUT' )
+    except IOError as e:
+      print( 'IOError OUT' )
+
+
+  def stop( self ):
+    # Wait for all proceses to stop
+    for p in self.pl:
+      p.join(1)
+      p.terminate()
 
 
 class PyWenchAgent( object ):
@@ -131,49 +158,63 @@ class PyWenchAgent( object ):
     connection_variables: dict
     urls: multiprocessing.Queue
     """
-    event.wait()
+    try:
+      event.wait()
 
-    cp = self.__get_connection_pool()
+      cp = self.__get_connection_pool()
 
-    while not urls.empty():
-      try:
-        _url = urls.get()
-        start = time.time()
-        r = None
-        r = cp.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
+      while not urls.empty():
+        try:
+          r = None
 
-        # get http code
-        code = r.status
+          # Request
+          _url = urls.get()
+          start = time.time()
+          r = cp.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
 
-        # ttfb (time to first byte)
-        r.read(1)
-        ttfb = time.time() - start
-        # ttlb (time to last byte)
-        r.read()
-        ttlb = time.time() - start
+          # get http code
+          code = r.status
 
-      except Exception as e:
-        if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and DEBUG:
-          print_debug("\n[%d] Exception occurred: %s\n" % (os.getpid(), e.__repr__()))
+          # ttfb (time to first byte)
+          r.read(1)
+          ttfb = time.time() - start
+          # ttlb (time to last byte)
+          r.read()
+          ttlb = time.time() - start
 
-        # In case of exception, set code=None so it does not affect timing stats
-        code = None
-        ttfb = 0
-        ttlb = 0
+        except Exception as e:
+          if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and DEBUG:
+            print_debug("\n[%d] Exception occurred: %s\n" % (os.getpid(), e.__repr__()))
 
-      finally:
-        # Release connection so the pool can continue doing requests
-        if r is not None:
-          r.release_conn()
+        finally:
+          # Release connection so the pool can continue doing requests
+          # Also get transfered bytes
+          if r is not None:
+            wire_bytes = r.tell()
+            r.release_conn()
+          # If r is None then something went wrong and we set code=None
+          # so it does not affect timing stats. Also reset the other vars
+          else:
+            code = None
+            ttfb = 0
+            ttlb = 0
+            wire_bytes = 0
 
-        data.append({
-          'time': start,
-          'url': _url,
-          'code': code,
-          'ttfb': ttfb,
-          'ttlb': ttlb,
-          'bytes': r.tell()
-        })
+          data.append({
+            'time': start,
+            'url': _url,
+            'code': code,
+            'ttfb': ttfb,
+            'ttlb': ttlb,
+            'bytes': wire_bytes
+          })
+
+    except KeyboardInterrupt as e:
+      sys.exit( 1 )
+    except IOError as e:
+      sys.exit( 1 )
+    except EOFError as e:
+      sys.exit( 1 )
 
 
 class UrlProvider( object ):
@@ -457,10 +498,10 @@ def pw_getopts():
 
   parser.add_argument("-s", "--server",
                       action="store",
-                      dest="server",
+                      dest="host",
                       type=str,
                       default=None,
-                      help="Server to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
+                      help="Host to benchmark. It must include the protocol and lack of trailing slash. For example: https://example.com")
 
   parser.add_argument("-u", "--urls",
                       action="store",
@@ -525,8 +566,8 @@ def pw_getopts():
 
   opts = parser.parse_args()
 
-  if not opts.server:
-    parser.error('Missing server to test (-s)')
+  if not opts.host:
+    parser.error('Missing host to test (-s)')
   if not opts.urls_file:
     parser.error('Missing file with urls (-u)')
   if not opts.concurrency:
@@ -545,50 +586,29 @@ def pw_getopts():
 def pw_main( opts ):
   print( '\nSetting up...' ),
   sys.stdout.flush()
-  # Set parameters
-  urls_file=opts.urls_file
-  mode=opts.mode
-  total_requests=opts.total_requests
-  concurrency=opts.concurrency
-  host=opts.server
-  http_version=opts.http_version
-  dynamic_plot=opts.dynamic_plot
-  replace_parameter=opts.replace_parameter
-  replace_parameter
-  auth_rule=opts.auth_rule
-  test_id=opts.test_id
 
   # Create needed instances
-  up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
-  dm = DataManager(total_requests, concurrency, http_version)
-  ag = PyWenchAgent( host, http_version, auth_rule, opts.headers  )
-  pm = Manager()
-  raw_data = pm.list()
+  up = UrlProvider( opts.urls_file, opts.mode, opts.total_requests, replace_parameter_list=opts.replace_parameter )
+  dm = DataManager( opts.total_requests, opts.concurrency, opts.http_version )
+  ag = PyWenchAgent( opts.host, opts.http_version, opts.auth_rule, opts.headers )
+
+  raw_data = Manager().list()
   event = Event()
 
   # Create processes for concurrency
-  ps = []
-  for p in range(concurrency):
-    p = Process(
-      target = ag.request_worker,
-      args = (
-        event,
-        up.queue,
-        raw_data
-      )
-    )
-    ps.append( p )
+  pwm = PyWenchManager( opts.concurrency )
+  pwm.start(
+    target = ag.request_worker,
+    args = ( event, up.queue, raw_data )
+  )
 
-  # Start processes
-  # Set event so we ensure all threads start the benchmark
-  # at the same time.
-  for p in ps:
-    p.start()
+  # Set event so we ensure all threads
+  # start the benchmark at the same time.
   global START_TIME
   START_TIME=time.time()
   event.set()
 
-  print( "\rRequests: %d\t\tConcurrency: %d\n" % (total_requests, ps.__len__()) )
+  print( "\rRequests: %d\t\tConcurrency: %d\n" % ( opts.total_requests, pwm.pl.__len__()) )
   # bs: progress bar size
   bs=50
 
@@ -597,7 +617,7 @@ def pw_main( opts ):
   last_qsize = up.queue.qsize()
   while not up.queue.empty():
     qsize = up.queue.qsize()
-    per=(qsize*bs)/total_requests
+    per=(qsize*bs)/opts.total_requests
     print( ' -%s.%s_ %d rps     \r' % ('-'*(bs-per-1), '_'*per, (last_qsize-qsize)*2) ),
     sys.stdout.flush()
     time.sleep(0.5)
@@ -608,12 +628,9 @@ def pw_main( opts ):
   global STOP_TIME
   STOP_TIME=time.time()
 
-  # Wait for all proceses to stop
   print( 'Stopping...' ),
   sys.stdout.flush()
-  for p in ps:
-    p.join(1)
-    p.terminate()
+  pwm.stop()
 
   print( "\rCompiling stats..." ),
   sys.stdout.flush()
@@ -626,13 +643,13 @@ def pw_main( opts ):
   dm.print_stats()
 
   # Saving information
-  file_prefix='%s_r%d_c%d' %(host.split('://')[1], total_requests, concurrency)
-  if test_id:
-    file_prefix='%s_%s' %(test_id, file_prefix)
+  file_prefix='%s_r%d_c%d' %(opts.host.split('://')[1], opts.total_requests, opts.concurrency)
+  if opts.test_id:
+    file_prefix='%s_%s' %(opts.test_id, file_prefix)
 
   dm.save( file_prefix )
 
-  if dynamic_plot:
+  if opts.dynamic_plot:
     dm.replot()
     plt.show()
 
@@ -644,3 +661,11 @@ if __name__ == '__main__':
   except PywenchException as e:
     print( 'Error: %s' % e.__str__() )
     sys.exit(1)
+  except KeyboardInterrupt as e:  # Ctrl-C
+    sys.exit( 130 )
+  except SystemExit as e:  # sys.exit()
+    raise e
+  except Exception as e:
+    print( str( e ) )
+    traceback.print_exc()
+    os._exit( 1 )
