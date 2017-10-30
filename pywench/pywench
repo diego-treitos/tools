@@ -18,6 +18,7 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import gzip
 import httplib
 import numpy as np
 import os
@@ -36,7 +37,7 @@ try:
     mpl.use('Agg')
   import matplotlib.pyplot as plt
 except ImportError:
-  print( '\nINFO: Could not import matplotlib. Graphs will not be generated\n' )
+  print( '\nWARNING: Could not import matplotlib. Graphs will not be generated\n' )
   plt = None
 
 
@@ -66,7 +67,7 @@ class PywenchException( Exception ):
     self.val = msg
 
   def __str__(self):
-    return repr( self.val )
+    return '\r' + repr( self.val )
 
 
 class PyWenchManager( object ):
@@ -239,8 +240,8 @@ class UrlProvider( object ):
 
     try:
       self.queue = self.__filter_urls(urls_file_path)
-    except IOError:
-      raise PywenchException('Unable to open file: %s' % urls_file_path)
+    except IOError as e:
+      raise PywenchException('Unable to open file: %s. %s' % (urls_file_path, e.__str__()))
 
   def __parse_replace_parameter(self, rpl):
     for rp in rpl:
@@ -252,7 +253,12 @@ class UrlProvider( object ):
     urls_to_use = Queue()
     r = Random()
 
-    with open(access_file) as access_lines:
+    if access_file.lower()[-3:] == '.gz':
+      open_function = gzip.open
+    else:
+      open_function = open
+
+    with open_function(access_file) as access_lines:
       for line in access_lines:
         fields = line.split()
         for m in self.methods:
@@ -524,7 +530,7 @@ def pw_getopts():
                       dest="urls_file",
                       type=str,
                       default=False,
-                      help="File with url's to test. This file must be directly an access.log file from nginx or apache.'")
+                      help="File with url's to test. This file must be directly an access.log file from nginx or apache. It can be gzipped (must end with .gz).")
 
   parser.add_argument("-c", "--concurrency",
                       action="store",
