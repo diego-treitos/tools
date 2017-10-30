@@ -54,124 +54,126 @@ def print_debug( msg, new_line=True ):
   sys.stdout.flush()
 
 
-def get_connection_pool( host, http_version=11, auth_rule=None, headers={} ):
-  if http_version == 10:
-    httplib.HTTPConnection._http_vsn = 10
-    httplib.HTTPConnection._http_vsn_str = 'HTTP/1.0'
-  elif http_version == 11:
-    httplib.HTTPConnection._http_vsn = 11
-    httplib.HTTPConnection._http_vsn_str = 'HTTP/1.1'
-  else:
-    raise PywenchException('Bad HTTP version: %s' % repr(http_version))
-
-  if auth_rule:
-    try:
-      auth = auth_rule.split('::')
-      method=auth[0]
-      url=auth[1]
-
-      if url[:7].lower() != 'http://' or url[:8].lower() != 'https://':
-        raise PywenchException('Bad authentication rule syntax: URL does not start by http:// or https://')
-
-      params={}
-      for p in auth[2:]:
-        [k, v] = p.split('=')
-        params[k]=v
-
-      tpool = urllib3.connectionpool.connection_from_url(url)
-      # Disable certificate verification for auth
-      tpool.cert_reqs = 'CERT_NONE'
-      tpool.ca_certs = None
-
-      if method.lower() == 'get':
-        r = tpool.request('GET', '%s?%s' % (url, '&'.join(auth[2:])))
-        cookie = r.getheader('set-cookie')
-      elif method.lower() == 'post':
-        r = tpool.request('POST', '%s', fields=params)
-        cookie = r.getheader('set-cookie')
-      else:
-        raise PywenchException('Bad authentication rule syntax: Only POST or GET methods allowed.')
-
-      DEFAULT_HEADERS['Cookie'] = cookie
-
-    except IndexError:
-      raise PywenchException('Bad authentication rule syntax')
-
-  if headers:
-    for h in headers:
-      DEFAULT_HEADERS[ h ] = headers[ h ]
-
-  cpool = urllib3.connectionpool.connection_from_url(host, headers=DEFAULT_HEADERS)
-
-  # Disable certificate verification for all connections
-  cpool.cert_reqs = 'CERT_NONE'
-  cpool.ca_certs = None
-
-  return cpool
-
-
-def request_worker( event, connection_variables, urls, data):
-  """
-  event : multiprocessing.Event
-  connection_variables: dict
-  urls: multiprocessing.Queue
-  """
-  event.wait()
-
-  cp = get_connection_pool(
-    connection_variables['host'],
-    connection_variables['http_version'],
-    connection_variables['auth_rule'],
-    connection_variables['headers']
-  )
-
-  while not urls.empty():
-    try:
-      _url = urls.get()
-      start = time.time()
-      r = None
-      r = cp.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
-
-      # get http code
-      code = r.status
-
-      # ttfb (time to first byte)
-      r.read(1)
-      ttfb = time.time() - start
-      # ttlb (time to last byte)
-      r.read()
-      ttlb = time.time() - start
-
-    except Exception as e:
-      if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and DEBUG:
-        print_debug("\n[%d] Exception occurred: %s\n" % (os.getpid(), e.__repr__()))
-
-      # In case of exception, set code=None so it does not affect timing stats
-      code = None
-      ttfb = 0
-      ttlb = 0
-
-    finally:
-      # Release connection so the pool can continue doing requests
-      if r is not None:
-        r.release_conn()
-
-      data.append({
-        'time': start,
-        'url': _url,
-        'code': code,
-        'ttfb': ttfb,
-        'ttlb': ttlb,
-        'bytes': r.tell()
-      })
-
-
 class PywenchException( Exception ):
   def __init__(self, msg):
     self.val = msg
 
   def __str__(self):
     return repr( self.val )
+
+
+class PyWenchAgent( object ):
+
+  def __init__( self, host, http_version=11, auth_rule=None, headers={} ):
+    self.host = host
+    self.http_version = http_version
+    self.auth_rule = auth_rule
+    self.headers = headers
+
+  def __get_connection_pool( self ):
+    if self.http_version == 10:
+      httplib.HTTPConnection._http_vsn = 10
+      httplib.HTTPConnection._http_vsn_str = 'HTTP/1.0'
+    elif self.http_version == 11:
+      httplib.HTTPConnection._http_vsn = 11
+      httplib.HTTPConnection._http_vsn_str = 'HTTP/1.1'
+    else:
+      raise PywenchException('Bad HTTP version: %s' % repr(self.http_version))
+
+    if self.auth_rule:
+      try:
+        auth = self.auth_rule.split('::')
+        method=auth[0]
+        url=auth[1]
+
+        if url[:7].lower() != 'http://' or url[:8].lower() != 'https://':
+          raise PywenchException('Bad authentication rule syntax: URL does not start by http:// or https://')
+
+        params={}
+        for p in auth[2:]:
+          [k, v] = p.split('=')
+          params[k]=v
+
+        tpool = urllib3.connectionpool.connection_from_url(url)
+        # Disable certificate verification for auth
+        tpool.cert_reqs = 'CERT_NONE'
+        tpool.ca_certs = None
+
+        if method.lower() == 'get':
+          r = tpool.request('GET', '%s?%s' % (url, '&'.join(auth[2:])))
+          cookie = r.getheader('set-cookie')
+        elif method.lower() == 'post':
+          r = tpool.request('POST', '%s', fields=params)
+          cookie = r.getheader('set-cookie')
+        else:
+          raise PywenchException('Bad authentication rule syntax: Only POST or GET methods allowed.')
+
+        DEFAULT_HEADERS['Cookie'] = cookie
+
+      except IndexError:
+        raise PywenchException('Bad authentication rule syntax')
+
+    if self.headers:
+      for h in self.headers:
+        DEFAULT_HEADERS[ h ] = self.headers[ h ]
+
+    cpool = urllib3.connectionpool.connection_from_url(self.host, headers=DEFAULT_HEADERS)
+
+    # Disable certificate verification for all connections
+    cpool.cert_reqs = 'CERT_NONE'
+    cpool.ca_certs = None
+
+    return cpool
+
+  def request_worker( self, event, urls, data ):
+    """
+    event : multiprocessing.Event
+    connection_variables: dict
+    urls: multiprocessing.Queue
+    """
+    event.wait()
+
+    cp = self.__get_connection_pool()
+
+    while not urls.empty():
+      try:
+        _url = urls.get()
+        start = time.time()
+        r = None
+        r = cp.urlopen('GET', _url, retries=0, redirect=False, release_conn=False, preload_content=False, timeout=SOCKET_TIMEOUT)
+
+        # get http code
+        code = r.status
+
+        # ttfb (time to first byte)
+        r.read(1)
+        ttfb = time.time() - start
+        # ttlb (time to last byte)
+        r.read()
+        ttlb = time.time() - start
+
+      except Exception as e:
+        if not isinstance(e, (urllib3.exceptions.MaxRetryError)) and DEBUG:
+          print_debug("\n[%d] Exception occurred: %s\n" % (os.getpid(), e.__repr__()))
+
+        # In case of exception, set code=None so it does not affect timing stats
+        code = None
+        ttfb = 0
+        ttlb = 0
+
+      finally:
+        # Release connection so the pool can continue doing requests
+        if r is not None:
+          r.release_conn()
+
+        data.append({
+          'time': start,
+          'url': _url,
+          'code': code,
+          'ttfb': ttfb,
+          'ttlb': ttlb,
+          'bytes': r.tell()
+        })
 
 
 class UrlProvider( object ):
@@ -243,7 +245,7 @@ class UrlProvider( object ):
     return urls_to_use
 
 
-class DataManager(object):
+class DataManager( object ):
 
   def __init__(self, total_requests, concurrency, http_version):
     self.data = {}
@@ -559,6 +561,7 @@ def pw_main( opts ):
   # Create needed instances
   up = UrlProvider(urls_file, mode, total_requests, replace_parameter_list=replace_parameter)
   dm = DataManager(total_requests, concurrency, http_version)
+  ag = PyWenchAgent( host, http_version, auth_rule, opts.headers  )
   pm = Manager()
   raw_data = pm.list()
   event = Event()
@@ -567,15 +570,9 @@ def pw_main( opts ):
   ps = []
   for p in range(concurrency):
     p = Process(
-      target = request_worker,
+      target = ag.request_worker,
       args = (
         event,
-        {
-          'host': host,
-          'http_version': http_version,
-          'auth_rule': auth_rule,
-          'headers': opts.headers
-        },
         up.queue,
         raw_data
       )
