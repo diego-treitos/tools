@@ -603,6 +603,9 @@ def pw_getopts():
     parser.error('Concurrency not given (-c)')
   if not opts.total_requests:
     parser.error('Number of requests not given (-n)')
+  if opts.dynamic_plot and not os.getenv('DISPLAY'):
+    parser.error('X Server not available for live display (-l)')
+
   try:
     if opts.headers:
       opts.headers = dict(opts.headers)
