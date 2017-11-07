@@ -54,6 +54,62 @@ DEFAULT_HEADERS={
 START_TIME=0
 STOP_TIME=0
 
+
+class pywenchColor():
+
+  def __init__( self ):
+    # foreground colors
+    self.red     ='\x1b[31m'
+    self.lred    ='\x1b[91m'
+    self.green   ='\x1b[32m'
+    self.lgreen  ='\x1b[92m'
+    self.yellow  ='\x1b[33m'
+    self.lyellow ='\x1b[93m'
+    self.blue    ='\x1b[34m'
+    self.lblue   ='\x1b[94m'
+    self.magenta ='\x1b[35m'
+    self.lmagenta='\x1b[95m'
+    self.cyan    ='\x1b[36m'
+    self.lcyan   ='\x1b[96m'
+    self.grey    ='\x1b[90m'
+    self.lgrey   ='\x1b[37m'
+    self.white   ='\x1b[97m'
+    self.black   ='\x1b[30m'
+
+    # background colors
+    self.b_red     ='\x1b[41m'
+    self.b_lred    ='\x1b[101m'
+    self.b_green   ='\x1b[42m'
+    self.b_lgreen  ='\x1b[102m'
+    self.b_yellow  ='\x1b[43m'
+    self.b_lyellow ='\x1b[103m'
+    self.b_blue    ='\x1b[44m'
+    self.b_lblue   ='\x1b[104m'
+    self.b_magenta ='\x1b[45m'
+    self.b_lmagenta='\x1b[105m'
+    self.b_cyan    ='\x1b[46m'
+    self.b_lcyan   ='\x1b[106m'
+    self.b_grey    ='\x1b[100m'
+    self.b_lgrey   ='\x1b[47m'
+    self.b_white   ='\x1b[107m'
+    self.b_black   ='\x1b[40m'
+
+    # special
+    self.reset ='\033[0;0m'
+    self.bold      ='\033[01m'
+    self.italic    ='\033[03m'
+    self.underline ='\033[04m'
+    self.inverse   ='\033[07m'
+    self.conceil   ='\033[08m'
+    self.crossedout='\033[09m'
+    self.bold_off      ='\033[21m'
+    self.italic_off    ='\033[23m'
+    self.underline_off ='\033[24m'
+    self.inverse_off   ='\033[27m'
+    self.conceil_off   ='\033[28m'
+    self.crossedout_off='\033[29m'
+
+
 def print_debug( msg, new_line=True ):
   if new_line:
     print( msg )
@@ -466,22 +522,22 @@ class DataManager( object ):
   def print_stats(self):
     if self.stat['ttfb']['min'] is None:
       raise PywenchException( 'All requests failed' )
-    self.output+= 'Stats\n\n'
-    self.output+= '\tminimum\t\taverage\t\tmaximum\n'
-    self.output+= '\t-------\t\t-------\t\t-------\n'
-    self.output+= 'ttfb\t%.5f s\t%.5f s\t%.5f s\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
-    self.output+= 'ttlb\t%.5f s\t%.5f s\t%.5f s\n\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
-    self.output+= 'mbps\t%.3f Mbps\t%.3f Mbps\t%.3f Mbps\n' % (self.stat['mbps']['min'], self.stat['mbps']['avg'], self.stat['mbps']['max'])
+    self.output+= ' Stats\n\n'
+    self.output+= ' \tminimum\t\taverage\t\tmaximum\n'
+    self.output+= ' \t-------\t\t-------\t\t-------\n'
+    self.output+= ' ttfb\t%.5f s\t%.5f s\t%.5f s\n' % (self.stat['ttfb']['min'], self.stat['ttfb']['avg'], self.stat['ttfb']['max'])
+    self.output+= ' ttlb\t%.5f s\t%.5f s\t%.5f s\n\n' % (self.stat['ttlb']['min'], self.stat['ttlb']['avg'], self.stat['ttlb']['max'])
+    self.output+= ' mbps\t%.3f Mbps\t%.3f Mbps\t%.3f Mbps\n' % (self.stat['mbps']['min'], self.stat['mbps']['avg'], self.stat['mbps']['max'])
     self.output+= '\n\n'
-    self.output+= 'Requests per second: %d rps\n' % self.stat['rps']
+    self.output+= ' Requests per second: %d rps\n' % self.stat['rps']
     self.output+= '\n\n'
-    self.output+= 'URL min ttfb: (%.5f s) %s\n' % self.stat['url']['min_ttfb']
-    self.output+= 'URL max ttfb: (%.5f s) %s\n' % self.stat['url']['max_ttfb']
-    self.output+= 'URL min ttlb: (%.5f s) %s\n' % self.stat['url']['min_ttlb']
-    self.output+= 'URL max ttlb: (%.5f s) %s\n' % self.stat['url']['max_ttlb']
-    self.output+= 'NOTE: These stats are based on the average time (ttfb or ttlb) for each url.\n'
+    self.output+= ' URL min ttfb: (%.5f s) %s\n' % self.stat['url']['min_ttfb']
+    self.output+= ' URL max ttfb: (%.5f s) %s\n' % self.stat['url']['max_ttfb']
+    self.output+= ' URL min ttlb: (%.5f s) %s\n' % self.stat['url']['min_ttlb']
+    self.output+= ' URL max ttlb: (%.5f s) %s\n' % self.stat['url']['max_ttlb']
+    self.output+= ' NOTE: These stats are based on the average time (ttfb or ttlb) for each url.\n'
     self.output+= '\n\n'
-    self.output+= 'Protocol stats:\n'
+    self.output+= ' Protocol stats:\n'
     code_list = self.stat['code'].keys()
     code_list.sort()
     for c in code_list:
@@ -619,6 +675,9 @@ def pw_main( opts ):
   print( '\nSetting up...' ),
   sys.stdout.flush()
 
+  # Colors
+  C = pywenchColor()
+
   # Create needed instances
   up = UrlProvider(
     opts.urls_file,
@@ -646,7 +705,7 @@ def pw_main( opts ):
   START_TIME=time.time()
   event.set()
 
-  print( "\rRequests: %d\t\tConcurrency: %d\n" % ( opts.total_requests, pwm.pl.__len__()) )
+  print( "\r Requests: %d\t\tConcurrency: %d" % ( opts.total_requests, pwm.pl.__len__()) )
   # bs: progress bar size
   bs=50
 
@@ -656,7 +715,7 @@ def pw_main( opts ):
   while not up.queue.empty():
     qsize = up.queue.qsize()
     per=(qsize*bs)/opts.total_requests
-    print( ' -%s.%s/ %d rps     \r' % ('-'*(bs-per-1), '_'*per, (last_qsize-qsize)*2) ),
+    print( ' %s%s%s%s%s %d rps     \r' % (C.crossedout+C.white, ' '*(bs-per-1), C.grey, ' '*per, C.reset, (last_qsize-qsize)*2) ),
     sys.stdout.flush()
     time.sleep(0.5)
     last_qsize = qsize
@@ -666,17 +725,17 @@ def pw_main( opts ):
   global STOP_TIME
   STOP_TIME=time.time()
 
-  print( 'Stopping...' ),
+  print( ' Stopping...' ),
   sys.stdout.flush()
   pwm.stop()
 
-  print( "\rCompiling stats..." ),
+  print( "\r Compiling stats..." ),
   sys.stdout.flush()
   for d in raw_data:
     dm.add_data(d)
   dm.compile_stats()
 
-  print( "\r                  \r" ),
+  print( "\r                    \r" ),
   sys.stdout.flush()
   dm.print_stats()
 
