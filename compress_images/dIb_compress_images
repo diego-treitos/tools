@@ -41,6 +41,8 @@ o_gif=false
 o_continue=false
 o_lossless=false
 o_quiet=false
+o_stats=false
+
 o_threshold=0
 o_img_path="$PWD"
 
@@ -81,6 +83,11 @@ for opt in $*;do
             last_opt="-q"
             shift
             ;;
+        -s)
+            o_stats=true
+            last_opt="-s"
+            shift
+            ;;
         -L)
             o_lossless=true
             last_opt="-L"
@@ -101,6 +108,7 @@ for opt in $*;do
             echo "      -g              Compress GIF files."
             echo "      -L              Use lossless compression."
             echo "      -q              Quiet mode."
+            echo "      -s              Only print the final stats as output."
             echo "      -c              Continue an already started compression. This will"
             echo "                      convert only not already backuped files."
             echo "      -t <percentage> Only use the converted file if the compression"
@@ -135,6 +143,8 @@ fala() {
         echo -e $*
     fi
 }
+
+
 
 align_right() {
         msg_total_size="101"
@@ -402,6 +412,11 @@ if ! ( $o_jpg  || $o_png || $o_gif ) ;then
     o_gif=true
 fi
 
+# Se so imprimimos as estatisticas (-s) forzamos o_quiet
+if $o_stats; then
+    o_quiet=true
+fi
+
 # Comprobar dependencias
 check_dependencies
 
@@ -420,7 +435,7 @@ fala ""
 fala "${white}=========== STATS ==========="
 fala ""
 
-if ! $o_quiet; then
+if ! $o_quiet || $o_stats; then
     if $o_jpg ;then get_stats_of_type jpeg "$jpg_avg_comp_perc";fi
     if $o_png ;then get_stats_of_type png  "$png_avg_comp_perc";fi
     if $o_gif ;then get_stats_of_type gif  "$gif_avg_comp_perc";fi
