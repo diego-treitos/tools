@@ -16,19 +16,41 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-grey='\033[30;01m'
-red='\033[31;01m'
-green='\033[32;01m'
-yellow='\033[33;01m'
-orange='\033[33;03m'
-blue='\033[34;01m'
-pink='\033[35;01m'
-cyan='\033[36;01m'
-purple='\033[35;00m'
-magenta='\033[22;36m'
-white='\033[37;01m'
-black='\033[30;02m'
+red='\033[31m'
+lightred='\033[91m'
+green='\033[32m'
+lightgreen='\033[92m'
+yellow='\033[33m'
+lightyellow='\033[93m'
+blue='\033[34m'
+lightblue='\033[94m'
+magenta='\033[35m'
+ligthmagenta='\033[95m'
+cyan='\033[36m'
+lightcyan='\033[96m'
+grey='\033[90m'
+lightgrey='\033[37m'
+white='\033[97m'
+black='\033[30m'
+
 reset='\033[0;0m'
+
+red_back='\033[41m'
+lightred_back='\033[101m'
+green_back='\033[42m'
+lightgreen_back='\033[102m'
+yellow_back='\033[43m'
+lightyellow_back='\033[103m'
+blue_back='\033[44m'
+lightblue_back='\033[104m'
+magenta_back='\033[45m'
+ligthmagenta_back='\033[105m'
+cyan_back='\033[46m'
+lightcyan_back='\033[106m'
+lightgrey_back='\033[47m'
+grey_back='\033[100m'
+white_back='\033[107m'
+black_back='\033[40m'
 
 bkp_ext="dIb_ic_bkp"
 
@@ -43,6 +65,7 @@ o_lossless=false
 o_quiet=false
 o_stats=false
 
+o_max_res=0
 o_threshold=0
 o_img_path="$PWD"
 
@@ -93,6 +116,10 @@ for opt in $*;do
             last_opt="-L"
             shift
             ;;
+        -m)
+            last_opt="-m"
+            shift
+            ;;
         -t)
             last_opt="-t"
             shift
@@ -114,6 +141,9 @@ for opt in $*;do
             echo "      -t <percentage> Only use the converted file if the compression"
             echo "                      saves more than <percentage> size. The files not"
             echo "                      below <percentage> will appear as 0% in output."
+            echo "      -m <resolution> Besides compressing the images, resize them to"
+            echo "                      <resolution> if they are bigger than that."
+            echo "                      Recommended <resolution> is 1920x1920."
             echo
             echo " NOTE: If none of -j, -p or -g are specified all of them (-j -p -g)"
             echo "       will be used."
@@ -122,6 +152,8 @@ for opt in $*;do
         *)
             if [ "$last_opt" == "-t" ];then
                 o_threshold="$1"
+            elif [ "$last_opt" == "-m" ];then
+                o_max_res="$1"
             else
                 o_img_path="$1"
                 if [ ! -e "$o_img_path" ];then
@@ -147,7 +179,7 @@ fala() {
 
 
 align_right() {
-        msg_total_size="101"
+        msg_total_size="111"
         msg="$1"
         fala -n " $msg"
         i=${#msg}
@@ -169,7 +201,7 @@ check_dependencies() {
         if ! which jpegoptim > /dev/null;then
             ok=false
             echo
-            echo -e "${red} ERROR: ${white}Jpegoptim is not installed.${reset}"
+            echo -e "${lightred} ERROR: ${white}Jpegoptim is not installed.${reset}"
             echo -e "      Debian/Ubuntu: sudo apt-get install jpegoptim"
             echo -e "        RHEL/CentOS: On your own..."
             echo
@@ -179,7 +211,7 @@ check_dependencies() {
         if ! which gifsicle > /dev/null;then
             ok=false
             echo
-            echo -e "${red} ERROR: ${white}Gifsicle is not installed.${reset}"
+            echo -e "${lightred} ERROR: ${white}Gifsicle is not installed.${reset}"
             echo -e "      Debian/Ubuntu: sudo apt-get install gifsicle"
             echo -e "        RHEL/CentOS: On your own..."
             echo
@@ -189,7 +221,7 @@ check_dependencies() {
         if ! which pngquant > /dev/null;then
             ok=false
             echo
-            echo -e "${red} ERROR: ${white}Pngquant is not installed.${reset}"
+            echo -e "${lightred} ERROR: ${white}Pngquant is not installed.${reset}"
             echo -e "      Debian/Ubuntu: sudo apt-get install pngquant"
             echo -e "        RHEL/CentOS: sudo yum install -y epel-release pngquant"
             echo
@@ -197,9 +229,19 @@ check_dependencies() {
         if ! which pngcrush > /dev/null;then
             ok=false
             echo
-            echo -e "${red} ERROR: ${white}Pngcrush is not installed.${reset}"
+            echo -e "${lightred} ERROR: ${white}Pngcrush is not installed.${reset}"
             echo -e "      Debian/Ubuntu: sudo apt-get install pngcrush"
             echo -e "        RHEL/CentOS: On your own..."
+            echo
+        fi
+    fi
+    if [ "$o_max_res" != 0 ]; then
+        if ! which convert > /dev/null;then
+            ok=false
+            echo
+            echo -e "${lightred} ERROR: ${white}ImageMagick is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install imagemagick"
+            echo -e "        RHEL/CentOS: sudo yum install ImageMagick"
             echo
         fi
     fi
@@ -231,23 +273,24 @@ get_stats_of_type() {
     f_type="$1"
     avg_comp_perc="$2"
 
-    [ $((avg_comp_perc)) -gt 5 ] && comp_perc_color="$reset$orange"
-    [ $((avg_comp_perc)) -gt 20 ] && comp_perc_color="$yellow"
-    [ $((avg_comp_perc)) -gt 50 ] && comp_perc_color="$green"
+    [ $((avg_comp_perc)) -gt 5 ] && comp_perc_color="$reset$yellow"
+    [ $((avg_comp_perc)) -gt 20 ] && comp_perc_color="$lightyellow"
+    [ $((avg_comp_perc)) -gt 50 ] && comp_perc_color="$lightgreen"
     [ $((avg_comp_perc)) -lt 10 ] && avg_comp_perc="0$avg_comp_perc"
     echo -e "${white}Average compression for $(echo $f_type | tr '[:lower:]' '[:upper:]')\t[${comp_perc_color} ${avg_comp_perc}% ${white}]${reset}"
 }
 
 get_generic_stats() {
-    echo -e "${white}\n  Total size for original images: ${yellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
-    echo -e "${white}Total size for compressed images: ${green}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
-    echo -e "${white}Your images are now using the ${cyan}$((($g_total_compressed_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
+    echo -e "${white}\n  Total size for original images: ${lightyellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
+    echo -e "${white}Total size for compressed images: ${lightgreen}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
+    echo -e "${white}Your images are now using the ${lightcyan}$((($g_total_compressed_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
 }
 
 
 compress_image() {
     bkp_file="$2"
     img_file="$3"
+
     case $1 in
         jpeg)
             cp "$bkp_file" "$img_file"
@@ -271,6 +314,10 @@ compress_image() {
             exit 1
             ;;
     esac
+
+    if [ "$o_max_res" != 0 ]; then
+        convert "$img_file"  -resize "$o_max_res"\> "$img_file"
+    fi
 }
 
 
@@ -362,7 +409,7 @@ compress_images_of_type(){
         # So creamos a copia de seguranza se non existe,
         # deste xeito conservamos sempre o orixinal
         if [ -f "$bkp_file" ];then
-            $o_continue && fala "${white}[ ${reset}---${white} ]${reset}" && continue
+            $o_continue && fala " ${white}[ ${reset}---${white} ]${reset}" && continue
         else
             mv "$img_file" "$bkp_file"
         fi
@@ -382,11 +429,11 @@ compress_images_of_type(){
         comp_perc_color="${red}"
         img_sum_comp_perc=$(($img_sum_comp_perc + $comp_perc))      
 
-        [ $((comp_perc)) -gt 5 ] && comp_perc_color="$reset$orange"
-        [ $((comp_perc)) -gt 20 ] && comp_perc_color="$yellow"
-        [ $((comp_perc)) -gt 50 ] && comp_perc_color="$green"
+        [ $((comp_perc)) -gt 5 ] && comp_perc_color="$reset$yellow"
+        [ $((comp_perc)) -gt 20 ] && comp_perc_color="$lightyellow"
+        [ $((comp_perc)) -gt 50 ] && comp_perc_color="$lightgreen"
         [ $((comp_perc)) -lt 10 ] && comp_perc="0$comp_perc"
-        fala "${white}[${comp_perc_color} ${comp_perc}% ${white}]${reset}"
+        fala " ${white}[${comp_perc_color} ${comp_perc}% ${white}]${reset}"
     done
     [ "$n" == 0 ] && return 0
     return "$((img_sum_comp_perc/n))"
@@ -394,10 +441,10 @@ compress_images_of_type(){
 
 grazas() {
     fala "\nAll the merit goes to these fantastic tools!"
-    fala "${green}  jpegoptim   ${cyan}Timo Kokkonen       ${white}https://www.kokkonen.net/tjko/projects.html"
-    fala "${green}  pngquant    ${cyan}Kornel Lesiński     ${white}https://pngquant.org"
-    fala "${green}  pngcrush    ${cyan}Andrew Chilton      ${white}http://pngcrush.com"
-    fala "${green}  gifsicle    ${cyan}Eddie Kohler        ${white}https://www.lcdf.org/gifsicle"
+    fala "${green}  jpegoptim   ${lightcyan}Timo Kokkonen       ${white}https://www.kokkonen.net/tjko/projects.html"
+    fala "${green}  pngquant    ${lightcyan}Kornel Lesiński     ${white}https://pngquant.org"
+    fala "${green}  pngcrush    ${lightcyan}Andrew Chilton      ${white}http://pngcrush.com"
+    fala "${green}  gifsicle    ${lightcyan}Eddie Kohler        ${white}https://www.lcdf.org/gifsicle"
 }
 ###) FUNCIONS
 
