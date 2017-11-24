@@ -290,6 +290,7 @@ get_generic_stats() {
 compress_image() {
     bkp_file="$2"
     img_file="$3"
+    to_return=0
 
     case $1 in
         jpeg)
@@ -297,27 +298,27 @@ compress_image() {
             jpegoptim -s --all-progressive -m80 "$img_file" -q > /dev/null 2>&1
             if [ "$?" != "0" ]; then
                 rm -f "$img_file"
-                return 1
-            else
-                return 0
+                to_return=1
             fi
             ;;
         png)
             pngquant --skip-if-larger -o "$img_file" --force --quality=70-80 "$bkp_file" > /dev/null 2>&1
-            return $?
+            to_return=$?
             ;;
         gif)
             gifsicle -O3 "$bkp_file" -o "$img_file" > /dev/null 2>&1
-            return $?
+            to_return=$?
             ;;
         *)
             exit 1
             ;;
     esac
 
-    if [ "$o_max_res" != 0 ]; then
+    if [ "$o_max_res" != 0 ] && [ $to_return == 0 ]; then
         convert "$img_file"  -resize "$o_max_res"\> "$img_file"
+        to_return=$?
     fi
+    return $to_return
 }
 
 
