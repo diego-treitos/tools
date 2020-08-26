@@ -60,6 +60,7 @@ o_revert=false
 o_jpg=false
 o_png=false
 o_gif=false
+o_webp=false
 o_continue=false
 o_lossless=false
 o_quiet=false
@@ -94,6 +95,11 @@ for opt in $*;do
         -g)
             o_gif=true
             last_opt="-g"
+            shift
+            ;;
+        -w)
+            o_webp=true
+            last_opt="-w"
             shift
             ;;
         -c)
@@ -133,6 +139,7 @@ for opt in $*;do
             echo "      -j              Compress JPEG files."
             echo "      -p              Compress PNG files."
             echo "      -g              Compress GIF files."
+            echo "      -w              Also create WebP versions of the images."
             echo "      -L              Use lossless compression."
             echo "      -q              Quiet mode."
             echo "      -s              Only print the final stats as output."
@@ -235,6 +242,16 @@ check_dependencies() {
             echo
         fi
     fi
+    if $o_webp; then
+        if ! which cwebp > /dev/null;then
+            ok=false
+            echo
+            echo -e "${lightred} ERROR: ${white}WebP is not installed.${reset}"
+            echo -e "      Debian/Ubuntu: sudo apt-get install webp"
+            echo -e "        RHEL/CentOS: On your own..."
+            echo
+        fi
+    fi
     if [ "$o_max_res" != 0 ]; then
         if ! which convert > /dev/null;then
             ok=false
@@ -284,6 +301,7 @@ get_generic_stats() {
     echo -e "${white}\n  Total size for original images: ${lightyellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
     echo -e "${white}Total size for compressed images: ${lightgreen}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
     echo -e "${white}Your images are now using the ${lightcyan}$((($g_total_compressed_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
+    $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}$((($g_total_webp_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
 }
 
 
@@ -300,19 +318,35 @@ compress_image() {
                 rm -f "$img_file"
                 to_return=1
             fi
+            $o_webp && cwebp "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
+            fi
             ;;
         png)
             pngquant --skip-if-larger -o "$img_file" --force --quality=70-80 "$bkp_file" > /dev/null 2>&1
             to_return=$?
+            $o_webp && cwebp "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
+            fi
             ;;
         gif)
             gifsicle -O3 "$bkp_file" -o "$img_file" > /dev/null 2>&1
             to_return=$?
+            $o_webp && gif2webp -lossy "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
+            fi
             ;;
         *)
             exit 1
             ;;
     esac
+
 
     if [ "$o_max_res" != 0 ] && [ $to_return == 0 ]; then
         convert "$img_file"  -resize "$o_max_res"\> "$img_file"
@@ -325,29 +359,45 @@ compress_image() {
 compress_image_lossless() {
     bkp_file="$2"
     img_file="$3"
+    to_return=0
     case $1 in
         jpeg)
             cp "$bkp_file" "$img_file"
             jpegoptim -s --all-progressive "$img_file" -q > /dev/null 2>&1
             if [ "$?" != "0" ]; then
                 rm -f "$img_file"
-                return 1
+                to_return=1
             else
-                return 0
+                to_return=0
+            fi
+            $o_webp && cwebp -lossless "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
             fi
             ;;
         png)
             pngcrush -rem allb -fix -q "$bkp_file" "$img_file" > /dev/null 2>&1
-            return $?
+            to_return=$?
+            $o_webp && cwebp -lossless "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
+            fi
             ;;
         gif)
             gifsicle -O3 "$bkp_file" -o "$img_file" > /dev/null 2>&1
-            return $?
+            $o_webp && gif2webp "$bkp_file" -o "${img_file}.webp" -quiet
+            if [ "$?" != "0" ]; then
+                rm -f "${img_file}.webp"
+                to_return=1
+            fi
             ;;
         *)
             exit 1
             ;;
     esac
+    return $to_return
 }
 
 
@@ -361,6 +411,8 @@ check_img_compression() {
 
     original_img_size="$(du -b $1 | cut -f 1)"
     processed_img_size="$(du -b $2 | cut -f 1)"
+    webp_img_size=0
+    $o_webp && [ -f "${processed_img}.webp" ] && webp_img_size="$(du -b "${processed_img}.webp" | cut -f 1)"
 
     # Se a imaxe ocupa 0 bytes, non calcular
     [ "$original_img_size" == 0 ] && return 0
@@ -373,6 +425,7 @@ check_img_compression() {
         return 0
     else
         g_total_compressed_size=$(($g_total_compressed_size+$processed_img_size))
+        $o_webp && g_total_webp_size=$(($g_total_webp_size+$webp_img_size))
         return $perc
     fi
 }
@@ -387,6 +440,7 @@ revert_images() {
     IFS=$'\r\n' GLOBIGNORE='*' ori_files="$(find "$o_img_path" -name "*.$bkp_ext" -type f )"
     for ori_file in $ori_files; do
         align_right "${white} Reverting ${reset}$(basename ${ori_file%%.$bkp_ext})${white} "
+        rm -f "${ori_file%%.$bkp_ext}.webp"
         mv "$ori_file" "${ori_file%%.$bkp_ext}"
         echo -e "${white}done.${reset}"
     done
