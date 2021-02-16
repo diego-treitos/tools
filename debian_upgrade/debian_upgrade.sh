@@ -197,7 +197,7 @@ if [ "$pre_hook" ]; then
 fi
 
 msg_info "Updating current release..."
-if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt autoremove -y); then
+if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt-get autoremove -y); then
   msg_error "Error while initial update"
   exit 1
 fi
@@ -208,7 +208,7 @@ if ! do_switch; then
 fi
 
 msg_info "Upgrading to '${yellow}$deb_release_next${reset}' release..."
-if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt autoremove -y); then
+if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt-get autoremove -y); then
   msg_error "Error while initial update"
   exit 1
 fi
