@@ -174,7 +174,7 @@ if ! do_requirements; then
 fi
 
 if ! $dontask; then
-  msg_ask "Last chance to ABORT!\n    You are going to upgrade to '${yellow}$deb_release_next${reset}'.\n    The upgrade could damage your installation so be sure to have backups.\n\n    ${grey}Reply exactly ${green}yEs${grey} if you want to continue.\n    ${white}Do you want to continue? [${red}N${white}/${green}yEs${white}]${reset}: "
+  msg_ask "Last chance to ABORT!\n    You are going to upgrade to '${yellow}$deb_release_next${reset}'.\n    The upgrade could damage your installation so be sure to have backups.\n    ${grey}Non official repositories will be commented out before upgrade.\n\n    ${grey}Reply exactly ${green}yEs${grey} if you want to continue.\n    ${white}Do you want to continue? [${red}N${white}/${green}yEs${white}]${reset}: "
   read -r shallpass 
   [ "$shallpass" == "yEs" ] || exit 0
 fi
@@ -210,6 +210,7 @@ fi
 msg_info "Upgrading to '${yellow}$deb_release_next${reset}' release..."
 if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt-get autoremove -y); then
   msg_error "Error while initial update"
+  msg_error "IMPORTANT NOTE: A failure in this stage requires manual examination. Keep an eye on the version if you run again this script."
   exit 1
 fi
 
