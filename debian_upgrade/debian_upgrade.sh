@@ -153,7 +153,7 @@ do_switch() {
 
   # Change security repo structure from buster to bullseye
   grep -Rl 'security.debian.org' /etc/apt/ | \
-    xargs -r sed -i 's#\(.*security\.debian\.org.*\) buster/updates#\1 bullseye-security#g'
+    xargs -r sed -i 's#\(.*security\.debian\.org.*\) bullseye/updates#\1 bullseye-security#g'
 }
 do_pre_hook() { eval "$pre_hook"; }
 do_post_hook() { eval "$post_hook"; }
