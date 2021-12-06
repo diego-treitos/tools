@@ -40,6 +40,12 @@ do_help() {
   echo "  -h           This help"
   echo "  -m MINUTES   Scan only files modified during the last MINUTES number of minutes. Default 60."
   echo "  -n MAIL      In case of infected files were found, notify to MAIL."
+  echo
+  echo
+  echo "Create the file /etc/cron.d/clamav_cron with similar contents to:"
+  echo
+  echo "# ClamAV Hourly Scan"
+  echo "0 * * * * root /root/tools/clamav_cron.sh -m 60 -n notifications@example.com"
 }
 do_clean()  {
 	rm -f "$tmp_file"
