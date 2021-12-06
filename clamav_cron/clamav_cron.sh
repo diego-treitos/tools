@@ -75,7 +75,7 @@ do_check
 
 ionice -c 3 nice -n 20 \
 	find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune -o \
-	 -type f -mtime "-${last_n_minutes}" -fprint "$tmp_file"
+	 -type f -mmin "-${last_n_minutes}" -fprint "$tmp_file"
 
 [ -s "$tmp_file" ] && ionice -c$ionice nice -n $cpunice clamscan -io -l "$log_file" -f "$tmp_file" ||\
 	echo -e "ClamAV ERROR\n------------\n\n`cat $log_file`" | mail -s "ClamAV Cron ERROR" "$notification_mail"
