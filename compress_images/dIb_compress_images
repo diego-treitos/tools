@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=2181
 #
 #  dIb_compress_images. Image compression tool for web environments.
 #  Copyright (C) 2014  Diego Blanco
@@ -54,8 +55,6 @@ black_back='\033[40m'
 
 bkp_ext="dIb_ic_bkp"
 
-options="-r -j -p -g -c -t -q -L -h --help"
-
 o_revert=false
 o_jpg=false
 o_png=false
@@ -75,7 +74,7 @@ g_total_compressed_size=0
 
 ###( PARSEADOR DE OPCIONS
 last_opt=""
-for opt in $*;do
+for opt in "$@";do
     case $opt in
         -r)
             o_revert=true
@@ -132,7 +131,7 @@ for opt in $*;do
             ;;
         -h|--help)
             echo " Use: $0 <options> <path>"
-            echo 
+            echo
             echo "   Options:"
             echo "      -r              Revert. Replace all processed images with their"
             echo "                      backups."
@@ -179,11 +178,9 @@ done
 ###( FUNCIONS
 fala() {
     if ! $o_quiet ; then
-        echo -e $*
+        echo -e "$@"
     fi
 }
-
-
 
 align_right() {
         msg_total_size="111"
@@ -192,7 +189,7 @@ align_right() {
         i=${#msg}
 
         # force size
-        [ -z $2 ] || i=$(($2))
+        [ -z "$2" ] || i=$((2))
 
         while [ $i -lt $((msg_total_size)) ]
         do
@@ -269,7 +266,7 @@ check_dependencies() {
 get_files_of_type() {
     case $1 in
         jpeg)
-            find "$o_img_path" -regextype posix-egrep -regex '.*\.[Jj][Pp][Ee]?[Gg]$' -type f 
+            find "$o_img_path" -regextype posix-egrep -regex '.*\.[Jj][Pp][Ee]?[Gg]$' -type f
             return $?
             ;;
         png)
@@ -294,14 +291,14 @@ get_stats_of_type() {
     [ $((avg_comp_perc)) -gt 20 ] && comp_perc_color="$lightyellow"
     [ $((avg_comp_perc)) -gt 50 ] && comp_perc_color="$lightgreen"
     [ $((avg_comp_perc)) -lt 10 ] && avg_comp_perc="0$avg_comp_perc"
-    echo -e "${white}Average compression for $(echo $f_type | tr '[:lower:]' '[:upper:]')\t[${comp_perc_color} ${avg_comp_perc}% ${white}]${reset}"
+    echo -e "${white}Average compression for $(echo "$f_type" | tr '[:lower:]' '[:upper:]')\t[${comp_perc_color} ${avg_comp_perc}% ${white}]${reset}"
 }
 
 get_generic_stats() {
     echo -e "${white}\n  Total size for original images: ${lightyellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
     echo -e "${white}Total size for compressed images: ${lightgreen}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
-    echo -e "${white}Your images are now using the ${lightcyan}$((($g_total_compressed_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
-    $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}$((($g_total_webp_size*100)/$g_total_original_size))%${white} of the space they used before.${reset}"
+    echo -e "${white}Your images are now using the ${lightcyan}$(((g_total_compressed_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
+    $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}$(((g_total_webp_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
 }
 
 
@@ -405,27 +402,27 @@ compress_image_lossless() {
 check_img_compression() {
     original_img="$1"
     processed_img="$2"
-    
+
     # Se a compresion fallou non habera copia de seguranza
     [ ! -f "$original_img" ] && return 0
 
-    original_img_size="$(du -b $1 | cut -f 1)"
-    processed_img_size="$(du -b $2 | cut -f 1)"
+    original_img_size="$(du -b "$original_img" | cut -f 1)"
+    processed_img_size="$(du -b "$processed_img" | cut -f 1)"
     webp_img_size=0
     $o_webp && [ -f "${processed_img}.webp" ] && webp_img_size="$(du -b "${processed_img}.webp" | cut -f 1)"
 
     # Se a imaxe ocupa 0 bytes, non calcular
     [ "$original_img_size" == 0 ] && return 0
 
-    g_total_original_size=$(($g_total_original_size+$original_img_size))
+    g_total_original_size=$((g_total_original_size+original_img_size))
 
-    perc=$((100-($processed_img_size*100/$original_img_size)))
+    perc=$((100-(processed_img_size*100/original_img_size)))
     if [ $((perc)) -lt $((o_threshold)) ]; then
         mv "$original_img" "$processed_img"
         return 0
     else
-        g_total_compressed_size=$(($g_total_compressed_size+$processed_img_size))
-        $o_webp && g_total_webp_size=$(($g_total_webp_size+$webp_img_size))
+        g_total_compressed_size=$((g_total_compressed_size+processed_img_size))
+        $o_webp && g_total_webp_size=$((g_total_webp_size+webp_img_size))
         return $perc
     fi
 }
@@ -434,14 +431,14 @@ revert_images() {
     echo -e "${white}=="
     echo -e "All images under${reset} $o_img_path ${white}will be restored."
     echo -en "Do you want to continue? [y/N]:${reset} "
-    read ans
+    read -r ans
     [ "$ans" != "y" ] && [ "$ans" != "Y" ] && [ "$ans" != "yes" ] && echo "Exiting" && return 0
     echo -e "${white}=="
     IFS=$'\r\n' GLOBIGNORE='*' ori_files="$(find "$o_img_path" -name "*.$bkp_ext" -type f )"
     for ori_file in $ori_files; do
-        align_right "${white} Reverting ${reset}$(basename ${ori_file%%.$bkp_ext})${white} "
-        rm -f "${ori_file%%.$bkp_ext}.webp"
-        mv "$ori_file" "${ori_file%%.$bkp_ext}"
+        align_right "${white} Reverting ${reset}$(basename "${ori_file%%."$bkp_ext"}")${white} "
+        rm -f "${ori_file%%."$bkp_ext"}.webp"
+        mv "$ori_file" "${ori_file%%."$bkp_ext"}"
         echo -e "${white}done.${reset}"
     done
 }
@@ -450,17 +447,17 @@ revert_images() {
 compress_images_of_type(){
     img_type="$1"
     fala "${white}=="
-    fala "=== ${reset}$(echo $img_type | tr '[:lower:]' '[:upper:]')${white} files ===" 
-    IFS=$'\r\n' GLOBIGNORE='*' image_files="$(get_files_of_type $img_type)"
+    fala "=== ${reset}$(echo "$img_type" | tr '[:lower:]' '[:upper:]')${white} files ==="
+    IFS=$'\r\n' GLOBIGNORE='*' image_files="$(get_files_of_type "$img_type")"
     n=0
     img_sum_comp_perc=0
     for img_file in $image_files
     do
         n=$((n+1))
 
-        align_right "${white} Compressing ${reset}$(basename $img_file)${white} "
+        align_right "${white} Compressing ${reset}$(basename "$img_file")${white} "
         bkp_file="${img_file}.${bkp_ext}"
-        
+
         # So creamos a copia de seguranza se non existe,
         # deste xeito conservamos sempre o orixinal
         if [ -f "$bkp_file" ];then
@@ -482,7 +479,7 @@ compress_images_of_type(){
         check_img_compression "$bkp_file" "$img_file"
         comp_perc=$?
         comp_perc_color="${red}"
-        img_sum_comp_perc=$(($img_sum_comp_perc + $comp_perc))      
+        img_sum_comp_perc=$((img_sum_comp_perc + comp_perc))
 
         [ $((comp_perc)) -gt 5 ] && comp_perc_color="$reset$yellow"
         [ $((comp_perc)) -gt 20 ] && comp_perc_color="$lightyellow"
@@ -502,7 +499,6 @@ grazas() {
     fala "${green}  gifsicle    ${lightcyan}Eddie Kohler        ${white}https://www.lcdf.org/gifsicle"
 }
 ###) FUNCIONS
-
 
 
 ###( PRINCIPAL
