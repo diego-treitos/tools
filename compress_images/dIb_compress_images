@@ -73,60 +73,52 @@ g_total_original_size=0
 g_total_compressed_size=0
 
 ###( PARSEADOR DE OPCIONS
-last_opt=""
 for opt in "$@";do
     case $opt in
         -r)
             o_revert=true
-            last_opt="-r"
             shift
             ;;
         -j)
             o_jpg=true
-            last_opt="-j"
             shift
             ;;
         -p)
             o_png=true
-            last_opt="-p"
             shift
             ;;
         -g)
             o_gif=true
-            last_opt="-g"
             shift
             ;;
         -w)
             o_webp=true
-            last_opt="-w"
             shift
             ;;
         -c)
             o_continue=true
-            last_opt="-c"
             shift
             ;;
         -q)
             o_quiet=true
-            last_opt="-q"
             shift
             ;;
         -s)
             o_stats=true
-            last_opt="-s"
             shift
             ;;
         -L)
             o_lossless=true
-            last_opt="-L"
             shift
             ;;
         -m)
-            last_opt="-m"
+            shift
+            o_max_res="$1"
             shift
             ;;
         -t)
-            last_opt="-t"
+            shift
+            o_threshold="$1"
             shift
             ;;
         -h|--help)
@@ -156,18 +148,11 @@ for opt in "$@";do
             exit 0
             ;;
         *)
-            if [ "$last_opt" == "-t" ];then
-                o_threshold="$1"
-            elif [ "$last_opt" == "-m" ];then
-                o_max_res="$1"
-            else
-                o_img_path="$1"
-                if [ ! -e "$o_img_path" ];then
-                    echo " $o_img_path: No such file or directory."
-                    exit 1
-                fi
+            o_img_path="$1"
+            if [ ! -e "$o_img_path" ];then
+                echo " $o_img_path: No such file or directory."
+                exit 1
             fi
-            last_opt=""
             shift
             ;;
     esac
@@ -262,7 +247,6 @@ check_dependencies() {
     $ok || exit 1
 }
 
-
 get_files_of_type() {
     case $1 in
         jpeg)
@@ -300,7 +284,6 @@ get_generic_stats() {
     echo -e "${white}Your images are now using the ${lightcyan}$(((g_total_compressed_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
     $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}$(((g_total_webp_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
 }
-
 
 compress_image() {
     bkp_file="$2"
@@ -352,7 +335,6 @@ compress_image() {
     return $to_return
 }
 
-
 compress_image_lossless() {
     bkp_file="$2"
     img_file="$3"
@@ -396,8 +378,6 @@ compress_image_lossless() {
     esac
     return $to_return
 }
-
-
 
 check_img_compression() {
     original_img="$1"
@@ -443,7 +423,6 @@ revert_images() {
     done
 }
 
-
 compress_images_of_type(){
     img_type="$1"
     fala "${white}=="
@@ -456,10 +435,10 @@ compress_images_of_type(){
         n=$((n+1))
 
         align_right "${white} Compressing ${reset}$(basename "$img_file")${white} "
-        bkp_file="${img_file}.${bkp_ext}"
 
         # So creamos a copia de seguranza se non existe,
         # deste xeito conservamos sempre o orixinal
+        bkp_file="${img_file}.${bkp_ext}"
         if [ -f "$bkp_file" ];then
             $o_continue && fala " ${white}[ ${reset}---${white} ]${reset}" && continue
         else
