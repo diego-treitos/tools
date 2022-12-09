@@ -16,6 +16,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+# shellcheck disable=SC2034
 
 #( include
 source /etc/os-release
@@ -101,7 +102,7 @@ crossedout_off='\e[29m'
 
 #( lib
 do_help() {
-  echo "Use: $0 [options]" 
+  echo "Use: $0 [options]"
   echo
   echo " OPTIONS"
   echo "  -l <version> Limit version number to upgrade to"
@@ -111,19 +112,22 @@ do_help() {
   echo "  -h           This help"
 }
 msg_info() {
+  # shellcheck disable=SC2059
   printf "\n${white}[${blue}+${white}]${reset} $*\n\n"
   sleep 2
 }
 msg_error() {
+  # shellcheck disable=SC2059
   printf "\n${white}[${red}!${white}]${reset} $*\n\n"
   sleep 2
 }
 msg_ask() {
+  # shellcheck disable=SC2059
   printf "\n${white}[${green}?${white}]${reset} $*"
   sleep 2
 }
 do_requirements() {
-  [ $deb_release_limit -le $(($VERSION_ID)) ] && msg_info "Cannot update. Reached version limit of ${red}$deb_release_limit${reset}" && exit 0
+  [ $deb_release_limit -le $((VERSION_ID)) ] && msg_info "Cannot update. Reached version limit of ${red}$deb_release_limit${reset}" && exit 0
   for i in "${!deb_releases[@]}"; do
     if [ "$VERSION_ID" == "$i" ]; then
       export deb_release_current="${deb_releases[$i]}"
@@ -163,7 +167,7 @@ do_post_hook() { eval "$post_hook"; }
 #( main
 while getopts "hl:p:P:y" option; do
   case "${option}" in
-    l) deb_release_limit="$((${OPTARG}))";;
+    l) deb_release_limit="$((OPTARG))";;
     p) pre_hook="${OPTARG}";;
     P) post_hook="${OPTARG}";;
     y) dontask=true;;
@@ -180,7 +184,7 @@ fi
 
 if ! $dontask; then
   msg_ask "Last chance to ABORT!\n    You are going to upgrade to '${yellow}$deb_release_next${reset}'.\n    The upgrade could damage your installation so be sure to have backups.\n    ${grey}Non official repositories will be commented out before upgrade.\n\n    ${grey}Reply exactly ${green}yEs${grey} if you want to continue.\n    ${white}Do you want to continue? [${red}N${white}/${green}yEs${white}]${reset}: "
-  read -r shallpass 
+  read -r shallpass
   [ "$shallpass" == "yEs" ] || exit 0
 fi
 
