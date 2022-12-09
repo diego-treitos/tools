@@ -37,6 +37,7 @@ jessie
 stretch
 buster
 bullseye
+bookworm
 )
 deb_release_current=""
 deb_release_limit=999
