@@ -280,13 +280,22 @@ get_stats_of_type() {
 }
 
 get_generic_stats() {
+  local webp_perc
+  local comp_perc
+  if [ $((g_total_original_size)) -gt 0 ]; then
+    webp_perc=$(((g_total_webp_size*100)/g_total_original_size))
+    comp_perc=$(((g_total_compressed_size*100)/g_total_original_size))
+  else
+    webp_perc="?"
+    comp_perc="?"
+  fi
   if $o_jpg  || $o_png || $o_gif ; then
     echo -e "${white}\n  Total size for original images: ${lightyellow}$(numfmt --to=iec --suffix=B --padding=7 $g_total_original_size)${reset}"
     echo -e "${white}Total size for compressed images: ${lightgreen}$(numfmt --to=iec --suffix=B --padding=7 $g_total_compressed_size)${reset}"
-    echo -e "${white}Your images are now using the ${lightcyan}$(((g_total_compressed_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
+    echo -e "${white}Your images are now using the ${lightcyan}${comp_perc}%${white} of the space they used before.${reset}"
   fi
 
-  $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}$(((g_total_webp_size*100)/g_total_original_size))%${white} of the space they used before.${reset}"
+  $o_webp && echo -e "${white}WebP images version are using the ${lightcyan}${webp_perc}%${white} of the space they used before.${reset}"
 }
 
 generate_webp() {

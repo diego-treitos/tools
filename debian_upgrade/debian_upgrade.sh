@@ -218,7 +218,7 @@ fi
 
 msg_info "Upgrading to '${yellow}$deb_release_next${reset}' release..."
 if ! (apt-get update && do_upgrade && do_upgrade dist-upgrade && apt-get autoremove -y); then
-  msg_error "Error while initial update"
+  msg_error "Error while upgrading packages"
   msg_error "IMPORTANT NOTE: A failure in this stage requires manual examination. Keep an eye on the version if you run again this script."
   exit 1
 fi
