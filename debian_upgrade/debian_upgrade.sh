@@ -39,6 +39,7 @@ stretch
 buster
 bullseye
 bookworm
+trixie
 )
 deb_release_current=""
 deb_release_limit=999
