@@ -73,89 +73,91 @@ g_total_original_size=0
 g_total_compressed_size=0
 
 ###( PARSEADOR DE OPCIONS
+shift=false
 for opt in "$@";do
-    case $opt in
-        -r)
-            o_revert=true
-            shift
-            ;;
-        -j)
-            o_jpg=true
-            shift
-            ;;
-        -p)
-            o_png=true
-            shift
-            ;;
-        -g)
-            o_gif=true
-            shift
-            ;;
-        -w)
-            o_webp=true
-            shift
-            ;;
-        -c)
-            o_continue=true
-            shift
-            ;;
-        -q)
-            o_quiet=true
-            shift
-            ;;
-        -s)
-            o_stats=true
-            shift
-            ;;
-        -L)
-            o_lossless=true
-            shift
-            ;;
-        -m)
-            shift
-            o_max_res="$1"
-            shift
-            ;;
-        -t)
-            shift
-            o_threshold="$1"
-            shift
-            ;;
-        -h|--help)
-            echo " Use: $0 <options> <path>"
-            echo
-            echo "   Options:"
-            echo "      -r              Revert. Replace all processed images with their"
-            echo "                      backups."
-            echo "      -j              Compress JPEG files."
-            echo "      -p              Compress PNG files."
-            echo "      -g              Compress GIF files."
-            echo "      -w              Also create WebP versions of the images."
-            echo "      -L              Use lossless compression."
-            echo "      -q              Quiet mode."
-            echo "      -s              Only print the final stats as output."
-            echo "      -c              Continue an already started compression. This will"
-            echo "                      convert only not already backuped files."
-            echo "      -t <percentage> Only use the converted file if the compression"
-            echo "                      saves more than <percentage> size. The files not"
-            echo "                      below <percentage> will appear as 0% in output."
-            echo "      -m <resolution> Besides compressing the images, resize them to"
-            echo "                      <resolution> if they are bigger than that."
-            echo "                      Recommended <resolution> is 1920x1920."
-            echo
-            echo " NOTE: If none of -j, -p or -g are specified all of them (-j -p -g)"
-            echo "       will be used."
-            exit 0
-            ;;
-        *)
-            o_img_path="$1"
-            if [ ! -e "$o_img_path" ];then
-                echo " $o_img_path: No such file or directory."
-                exit 1
-            fi
-            shift
-            ;;
-    esac
+  $shift && shift=false && continue
+  case $opt in
+    -r)
+        o_revert=true
+        shift
+        ;;
+    -j)
+        o_jpg=true
+        shift
+        ;;
+    -p)
+        o_png=true
+        shift
+        ;;
+    -g)
+        o_gif=true
+        shift
+        ;;
+    -w)
+        o_webp=true
+        shift
+        ;;
+    -c)
+        o_continue=true
+        shift
+        ;;
+    -q)
+        o_quiet=true
+        shift
+        ;;
+    -s)
+        o_stats=true
+        shift
+        ;;
+    -L)
+        o_lossless=true
+        shift
+        ;;
+    -m)
+        shift
+        o_max_res="$1"
+        shift=true
+        ;;
+    -t)
+        shift
+        o_threshold="$1"
+        shift=true
+        ;;
+    -h|--help)
+        echo " Use: $0 <options> <path>"
+        echo
+        echo "   Options:"
+        echo "      -r              Revert. Replace all processed images with their"
+        echo "                      backups."
+        echo "      -j              Compress JPEG files."
+        echo "      -p              Compress PNG files."
+        echo "      -g              Compress GIF files."
+        echo "      -w              Also create WebP versions of the images."
+        echo "      -L              Use lossless compression."
+        echo "      -q              Quiet mode."
+        echo "      -s              Only print the final stats as output."
+        echo "      -c              Continue an already started compression. This will"
+        echo "                      convert only not already backuped files."
+        echo "      -t <percentage> Only use the converted file if the compression"
+        echo "                      saves more than <percentage> size. The files not"
+        echo "                      below <percentage> will appear as 0% in output."
+        echo "      -m <resolution> Besides compressing the images, resize them to"
+        echo "                      <resolution> if they are bigger than that."
+        echo "                      Recommended <resolution> is 1920x1920."
+        echo
+        echo " NOTE: If none of -j, -p or -g are specified all of them (-j -p -g)"
+        echo "       will be used."
+        exit 0
+        ;;
+    *)
+        o_img_path="$opt"
+        if [ ! -e "$o_img_path" ];then
+            echo " $o_img_path: No such file or directory."
+            exit 1
+        fi
+        shift
+        ;;
+  esac
 done
 ###) PARSEADOR DE OPCIONS
 
