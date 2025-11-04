@@ -40,6 +40,8 @@ buster
 bullseye
 bookworm
 trixie
+forky
+duke
 )
 deb_release_current=""
 deb_release_limit=999
