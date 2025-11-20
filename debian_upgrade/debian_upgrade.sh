@@ -195,6 +195,7 @@ if [ -z "$TMUX" ]; then
   msg_info "Starting tmux session with name '${cyan}$tmux_session_name${reset}' and running script inside. Use '${white}tmux a -t $tmux_session_name${reset}' to check the upgrade status."
   tmux new-session -d -s "$tmux_session_name" && \
     tmux send-keys -t "$tmux_session_name:0" "$0 -p \"$pre_hook\" -P \"$post_hook\" -y" C-m
+  sleep 1 # Give time to subcall in case script disapears (i.e. ansible script module)
   exit 0
 fi
 
